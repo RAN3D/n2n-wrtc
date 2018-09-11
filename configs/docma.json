@@ -12,7 +12,7 @@
     "app": {
       "title": "n2n-wrtc",
       "entrance": "content:readme",
-      "base": "/",
+      "base": "/n2n-wrtc/",
       "server": "github"
     },
     "markdown": {
@@ -25,7 +25,7 @@
         "options": {
             "title": {
                 "label": "n2n-wrtc",
-                "href": "/?content=readme"
+                "href": "?content=readme"
             },
             "sidebar": {
                 "enabled": true,
