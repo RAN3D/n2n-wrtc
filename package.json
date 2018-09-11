@@ -14,7 +14,8 @@
     "build:dev": "webpack --watch --mode development --config ./configs/webpack-config.js",
     "build:prod": "webpack --mode production --config ./configs/webpack-config-min.js",
     "doc:build": "docma -c configs/docma.json",
-    "doc:serve": "docma serve ./docs"
+    "doc:serve": "docma serve ./docs",
+    "mocha": "tests/**/*-test.js --exit"
   },
   "repository": {
     "type": "git",
