@@ -29,18 +29,18 @@ Project that aims to ease the WebRTC connection establishment process. Among oth
 
 ### Principle
 
-<center>
+<p style='text-align: center'>
 <img src='./assets/img/notsharing.png#center' />
-</center>
+</p>
 
 Three peer-to-peer applications ```8O```, ```:|``` and ```>_<``` run in a same
 tab of a WebRTC-compatible browser. When they want to connect to their
 respective remote counterpart, the browser must establish 3 WebRTC connections,
 for they do not share any information between each other.
 
-<center>
+<p style='text-align: center'>
 <img src='./assets/img/sharing.png#center' />
-</center>
+</p>
 
 
 Using this module to create WebRTC connections, they can share it and messages
@@ -59,9 +59,9 @@ The way connections are handled are left to the discretion of overlay protocols 
 
 ### Principle
 
-<center>
+<p style='text-align: center'>
 <img src='./assets/img/signal.png#center' />
-</center>
+</p>
 
 There exists a network comprising at least Peer ```:|```. Peer ```:]``` wants to
 join this network. ```:|``` knows it and opens an access to the network thanks
@@ -71,9 +71,9 @@ necessary WebRTC data from both sides. The figure shows this protocol with the
 configurations. If the protocol is successful, it creates a direct
 browser-to-browser connection from ```:]``` to ```:|```.
 
-<center>
+<p style='text-align: center'>
 <img src='./assets/img/bridge.png#center' />
-</center>
+</p>
 
 Peers already in the network do not need to use a signaling server to establish
 connections, for each of them can act as a signaling server, i.e. as a bridge
