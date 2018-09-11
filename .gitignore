@@ -59,3 +59,7 @@ typings/
 
 # next.js build output
 .next
+
+# other
+bin/n2n-wrtc.bundle.js
+bin/n2n-wrtc.bundle.js.map
