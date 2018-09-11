@@ -1,4 +1,4 @@
-# n2n-wrtc [![Build Status](https://travis-ci.org/RAN3D/n2n-wrtc.svg?branch=master)](https://travis-ci.org/RAN3D/n2n-wrtc)
+# n2n-wrtc [![Build Status](https://travis-ci.com/RAN3D/n2n-wrtc.svg?branch=master)](https://travis-ci.com/RAN3D/n2n-wrtc)
 
 **Keywords:** WebRTC, browser-to-browser communication, overlay networks
 

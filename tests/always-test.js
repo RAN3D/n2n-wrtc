@@ -1,5 +1,5 @@
 describe('always pass', () =>{
-    if('always', (done) => {
+    it('always', (done) => {
       done()
     })
 })
