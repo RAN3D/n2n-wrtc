@@ -29,7 +29,7 @@ Project that aims to ease the WebRTC connection establishment process. Among oth
 
 ### Principle
 
-<p style='text-align: center'>
+<p align="center">
 <img src='./assets/img/notsharing.png#center' />
 </p>
 
@@ -38,7 +38,7 @@ tab of a WebRTC-compatible browser. When they want to connect to their
 respective remote counterpart, the browser must establish 3 WebRTC connections,
 for they do not share any information between each other.
 
-<p style='text-align: center'>
+<p align="center">
 <img src='./assets/img/sharing.png#center' />
 </p>
 
@@ -59,7 +59,7 @@ The way connections are handled are left to the discretion of overlay protocols 
 
 ### Principle
 
-<p style='text-align: center'>
+<p align="center">
 <img src='./assets/img/signal.png#center' />
 </p>
 
@@ -71,8 +71,8 @@ necessary WebRTC data from both sides. The figure shows this protocol with the
 configurations. If the protocol is successful, it creates a direct
 browser-to-browser connection from ```:]``` to ```:|```.
 
-<p style='text-align: center'>
-<img src='./assets/img/bridge.png#center' />
+<p align="center">
+<img  src='./assets/img/bridge.png#center' />
 </p>
 
 Peers already in the network do not need to use a signaling server to establish
