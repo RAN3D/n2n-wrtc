@@ -7,6 +7,13 @@
 <p><strong>NB1:</strong> Build for browsers and Node (v8.11.1+)</p>
 <p><strong>NB:</strong> This package is a replacement package for n2n-overlay-wrtc and neighborhood-wrtc
 This allows to do the same job but the package is completely rebuilt from scratch for simplicity.</p>
+<h2 id="install">Install</h2>
+<hr />
+<pre><code>npm install --save n2n-wrtc
+</code></pre><h2 id="usage">Usage</h2>
+<hr />
+<p>In the browser the library is available through the name n2n</p>
+<p>In NodeJs just do <code>const n2n = require('n2n')</code></p>
 <h2 id="neighborhood">Neighborhood</h2>
 <hr />
 <p>Project that aims to ease the WebRTC connection establishment process. Among others, it alleviates the need to know which socket produced which offer. It also reuses existing connections instead of establishing new ones, when this is possible. It aims to be part of network protocols that build overlay networks and to provide them logical arcs - using identifiers - instead of channels. Finally, it is designed to handle multiple protocols, for they may share identical arcs. For instance, consider several applications embedded in a single web page, some of them are connected to a same peer. Instead of working completely on their own, these applications will share the same channel. The neighborhood-wrtc module will redirect the messages to the right applications.</p>
