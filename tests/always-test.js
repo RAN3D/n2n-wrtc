@@ -1,5 +1,5 @@
-describe('always pass', () =>{
-    it('always', (done) => {
-      done()
-    })
+describe('always pass', () => {
+  it('always', (done) => {
+    done()
+  })
 })
