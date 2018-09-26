@@ -1,3 +1,4 @@
+const webpack = require('webpack')
 module.exports = {
   mode: 'development',
   entry: './lib/index.js',
@@ -7,9 +8,6 @@ module.exports = {
     'library': 'n2n',
     'libraryTarget': 'umd',
     'umdNamedDefine': true
-  },
-  externals: {
-    leveldown: 'leveldown'
   },
   module: {
     rules: [

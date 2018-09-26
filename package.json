@@ -10,6 +10,7 @@
     "bin": "bin"
   },
   "scripts": {
+    "signaling": "node bin/signaling-server.js",
     "test": "npm run mocha",
     "lint": "standard --verbose \"./lib/**/*.js\" \"./tests/**/*.js\" | snazzy",
     "fix": "standard --fix --verbose \"./lib/**/*.js\" \"./tests/**/*.js\" | snazzy",
@@ -56,9 +57,13 @@
   },
   "dependencies": {
     "debug": "^4.0.1",
+    "express": "^4.16.3",
+    "lodash.find": "^4.6.0",
     "lodash.merge": "^4.6.1",
     "short-uuid": "^3.0.0",
-    "simple-peer": "^9.1.2"
+    "simple-peer": "^9.1.2",
+    "socket.io": "^2.1.1",
+    "socket.io-client": "^2.1.1"
   },
   "standard": {
     "env": [
