@@ -66,10 +66,13 @@ peer-sampling protocols.</p>
 <h2 id="overview-of-available-functionalities">Overview of available functionalities</h2>
 <hr />
 <ul class="docma task-list">
-<li class="docma task-item"><input type="checkbox" disabled=""> &nbsp;Create the API</li>
-<li class="docma task-item"><input type="checkbox" disabled=""> &nbsp;Create WebRTC Wrapper using (<a href="https://github.com/feross/simple-peer">simple-peer</a>)</li>
+<li class="docma task-item"><input type="checkbox" disabled="" checked=""> &nbsp;Create the API (api for neighborhood, signaling services, n2n and sockets)</li>
+<li class="docma task-item"><input type="checkbox" disabled="" checked=""> &nbsp;Create WebRTC Wrapper using (<a href="https://github.com/feross/simple-peer">simple-peer</a>)</li>
 <li class="docma task-item"><input type="checkbox" disabled=""> &nbsp;Create Bluetooth Wrapper using (<a href="http://sabertooth-io.github.io/">sabertooth</a>)</li>
-<li class="docma task-item"><input type="checkbox" disabled=""> &nbsp;Create the Signaling service for the very first connection (the entrance)</li>
+<li class="docma task-item"><input type="checkbox" disabled="" checked=""> &nbsp;Create the Signaling service for the very first connection (the entrance)</li>
+<li class="docma task-item"><input type="checkbox" disabled="" checked=""> &nbsp;Offline signaling allowing to do <code>a.connect(b)</code></li>
+<li class="docma task-item"><input type="checkbox" disabled="" checked=""> &nbsp;Implement a signaling service (<code>npm run signaling</code> or <code>require('n2n-wrtc/lib/signaling/server').server()</code>)</li>
+<li class="docma task-item"><input type="checkbox" disabled="" checked=""> &nbsp;Online signaling allowing to do <code>a.connect()</code> using a signaling server</li>
 <li class="docma task-item"><input type="checkbox" disabled=""> &nbsp;Create the internal signaling service</li>
 <li class="docma task-item"><input type="checkbox" disabled=""> &nbsp;Create bridge connections</li>
 <li class="docma task-item"><input type="checkbox" disabled=""> &nbsp;Create from -&gt; to connections</li>

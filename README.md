@@ -83,10 +83,13 @@ in the network. `:3` can establish a WebRTC connection to `:|` using
 peer-sampling protocols.
 
 ## Overview of available functionalities
-- [ ] Create the API
-- [ ] Create WebRTC Wrapper using ([simple-peer](https://github.com/feross/simple-peer))
+- [x] Create the API (api for neighborhood, signaling services, n2n and sockets)
+- [x] Create WebRTC Wrapper using ([simple-peer](https://github.com/feross/simple-peer))
 - [ ] Create Bluetooth Wrapper using ([sabertooth](http://sabertooth-io.github.io/))
-- [ ] Create the Signaling service for the very first connection (the entrance)
+- [x] Create the Signaling service for the very first connection (the entrance)
+- [x] Offline signaling allowing to do `a.connect(b)`
+- [x] Implement a signaling service (`npm run signaling` or `require('n2n-wrtc/lib/signaling/server').server()`)
+- [x] Online signaling allowing to do `a.connect()` using a signaling server
 - [ ] Create the internal signaling service
 - [ ] Create bridge connections
 - [ ] Create from -> to connections
