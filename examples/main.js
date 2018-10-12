@@ -17,7 +17,7 @@ b.on('close', (id) => {
 })
 
 async function connection () {
-  await a.connect() // 0:0
+  await a.connect() // connected, becasue he is alone
   await b.connect() // B => A
   return a.connect() // A => B: 1:1 1:1
 }

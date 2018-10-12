@@ -39,7 +39,10 @@ describe('Disconnection', function () {
           resolve()
         })
         assert.strictEqual(a.getNeighboursIds().length, 0)
-        assert.strictEqual(b.getNeighboursIds().length, 1) // we are at one because the socket did not noticed yet that the channel is closed.
+        // assert.strictEqual(b.getNeighboursIds().length, 1)
+        // now we have proper disconnection on both sides, because it's not a crash.
+        assert.strictEqual(b.getNeighboursIds().length, 0)
+        resolve()
       }).catch(reject)
     })
   })

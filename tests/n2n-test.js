@@ -307,7 +307,7 @@ describe('N2N connection', function () {
         console.log(b.getNeighboursInview(), b.getNeighboursOutview())
         assert.strictEqual(neigha.size, 0)
         assert.strictEqual(neighb.size, 0)
-        // resolve()
+        resolve()
       }, 1000)
     })
   })
