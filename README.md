@@ -99,3 +99,4 @@ peer-sampling protocols.
 - [ ] Control the size of the object sent and create a mechanism to handle bigger files (chunkification)
 - [ ] Allows each method to be customizable
 - [ ] (Optionnal) Allows for hooks before sending and after sending messages
+- [ ] Connection/Disconnection/MessageSendFunction bufferization in N2N module.

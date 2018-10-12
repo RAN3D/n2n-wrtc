@@ -4,7 +4,7 @@ const assert = require('assert')
 const utils = require('../lib/utils')
 
 let ss
-describe('Online connection', function () {
+describe('[Neighborhood] Online connection', function () {
   this.timeout(2 * 60 * 1000)
   before((done) => {
     utils.startServer().then(signaling => {

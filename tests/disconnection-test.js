@@ -2,7 +2,7 @@ const Neighborhood = require('../lib').Neighborhood
 const wrtc = require('wrtc')
 const assert = require('assert')
 
-describe('Online connection', function () {
+describe('Disconnection', function () {
   this.timeout(2 * 60 * 1000)
   it('disconnection after offline conenction', async () => {
     const a = new Neighborhood({
