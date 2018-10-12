@@ -274,6 +274,43 @@ describe('N2N connection', function () {
       resolve()
     })
   })
+  it('offline connection+disconnection, B disconnect, A need to remove connections', async () => {
+    const a = new N2N({
+      socket: {
+        trickle: true,
+        wrtc
+      }
+    })
+    const b = new N2N({
+      socket: {
+        trickle: true,
+        wrtc
+      }
+    })
+    a.on('close', (id) => {
+      console.log('a closes a con: ', id)
+    })
+    b.on('close', (id) => {
+      console.log('b closes a con: ', id)
+    })
+    await a.connect(b)
+    await a.connect(b)
+    await b.connect(a)
+    await b.disconnect()
+    return new Promise((resolve, reject) => {
+      console.log(a.getNeighboursInview(), a.getNeighboursOutview())
+      console.log(b.getNeighboursInview(), b.getNeighboursOutview())
+      let neigha = a.getNeighbours()
+      let neighb = b.getNeighbours()
+      setTimeout(() => {
+        console.log(a.getNeighboursInview(), a.getNeighboursOutview())
+        console.log(b.getNeighboursInview(), b.getNeighboursOutview())
+        assert.strictEqual(neigha.size, 0)
+        assert.strictEqual(neighb.size, 0)
+        // resolve()
+      }, 1000)
+    })
+  })
 }) // end describe
 
 function checkNeighbours (a, b) {
