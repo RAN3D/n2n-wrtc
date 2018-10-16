@@ -1,5 +1,4 @@
 const Neighborhood = require('../lib').Neighborhood
-const wrtc = require('wrtc')
 const assert = require('assert')
 const utils = require('../lib/utils')
 
@@ -23,7 +22,7 @@ describe('[Neighborhood] Online connection', function () {
       },
       socket: {
         trickle: true,
-        wrtc
+        moc: true
       }
     })
     const b = new Neighborhood({
@@ -32,7 +31,7 @@ describe('[Neighborhood] Online connection', function () {
       },
       socket: {
         trickle: true,
-        wrtc
+        moc: true
       }
     })
     const neigh = await a.connect()

@@ -1,12 +1,14 @@
-# n2n-wrtc [![Build Status](https://travis-ci.com/RAN3D/n2n-wrtc.svg?branch=master)](https://travis-ci.com/RAN3D/n2n-wrtc)
+# n2n-wrtc [![Build Status](https://travis-ci.com/RAN3D/n2n-wrtc.svg?branch=master)](https://travis-ci.com/RAN3D/n2n-wrtc) [![Gitter chat](https://badges.gitter.im/gitterHQ/gitter.png)](https://gitter.im/ran3d/n2n-wrtc)
 
 **Keywords:** WebRTC, browser-to-browser communication, overlay networks
 
 Create and manage connections over a network using signaling services and communication wrappers.
 
-For the moment a WebRTC and a Bluetooth wrapper is included, but other wrapper can be used following the same API.
+ **Link** to the [list of features available](#features)
 
-**NB1:** Build for browsers and Node (v8.11.1+)
+For the moment a **WebRTC** wrapper is included, but other wrapper can be used following the same API.
+
+**NB1:** Build for browsers and Node (v8.12.0+)
 
 **NB:** This package is a replacement package for n2n-overlay-wrtc and neighborhood-wrtc
 This allows to do the same job but the package is completely rebuilt from scratch for simplicity.
@@ -82,21 +84,28 @@ in the network. `:3` can establish a WebRTC connection to `:|` using
 `:]`. Such neighbor-to-neighbor connections are common in distributed
 peer-sampling protocols.
 
-## Overview of available functionalities
+## Overview of available functionalities <a name='features'></a>
 - [x] Create the API (api for neighborhood, signaling services, n2n and sockets)
 - [x] Create WebRTC Wrapper using ([simple-peer](https://github.com/feross/simple-peer))
 - [ ] Create Bluetooth Wrapper using ([sabertooth](http://sabertooth-io.github.io/))
-- [x] Create the Signaling service for the very first connection (the entrance)
-- [x] Offline signaling allowing to do `a.connect(b)`
-- [x] Implement a signaling service (`npm run signaling` or `require('n2n-wrtc/lib/signaling/server').server()`)
-- [x] Online signaling allowing to do `a.connect()` using a signaling server
-- [ ] Create the internal signaling service
-- [ ] Create bridge connections
-- [ ] Create from -> to connections
+- [x] **Offline signaling** allowing to do `a.connect(b)`
+- [x] **Signaling server** for online signaling `npm run signaling` or `require('n2n-wrtc/lib/signaling/server').server()`
+- [x] **Online signaling** allowing to do `a.connect()` using a signaling server
+- [x] **Get a list of all neighbours** including inview/outview/sockets `a.getNeighbours()` will return a Map containing every connections
+- [x] **Get a list of all neighbours ids** (inview/outview): `a.getNeighboursIds()`
+- [x] **Get only inview ids**: `a.getNeighboursInview()`
+- [x] **Get only outview ids**: `a.getNeighboursOutview()`
+- [x] **Send** a message over Unicast:  `a.send(b.id, 'meow');`
+- [x] **Listen on incoming messages**: `b.on('receive', (id, message) => ...);`
+- [ ] Create the internal signaling service:
+  - Allow to forward offers from an inview neighbour to an outview neighbour
+  - After connection new offers are transmitted by message (usefull for re-negociation)
+- [ ] Create bridge connections allowing to do: `a.bridge(b.id, c.id)` if b and c are neighbours
+- [ ] Create from -> to connections allowing to do: `a.connectTo(b.id)`
+  - It means that it increments our outview and increment the inview of the neighbor
 - [ ] Create to -> from connections
+  - It means that it does the same thing than from -> to but from the neighbor: `a.connectFrom(b.id)`
 - [ ] Encapsulate each message sent for distinguish admin messages from application messages
 - [ ] Minimize the encapsulation
 - [ ] Control the size of the object sent and create a mechanism to handle bigger files (chunkification)
-- [ ] Allows each method to be customizable
-- [ ] (Optionnal) Allows for hooks before sending and after sending messages
 - [ ] Connection/Disconnection/MessageSendFunction bufferization in N2N module.

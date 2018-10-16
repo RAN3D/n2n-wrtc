@@ -424,7 +424,6 @@ class Socket extends EventEmitter {
   async disconnect (options) {
     return this._disconnect(options).then((res) => {
       this.status = 'disconnected'
-      this._debug('socket closed')
       return res
     }).catch(e => e)
   }
@@ -468,7 +467,22 @@ module.exports = Socket
 
 module.exports = {
   nyi: __webpack_require__(/*! ./not-yet-implemented */ "./lib/errors/not-yet-implemented.js"),
-  peerNotFound: __webpack_require__(/*! ./peer-not-found */ "./lib/errors/peer-not-found.js")
+  peerNotFound: __webpack_require__(/*! ./peer-not-found */ "./lib/errors/peer-not-found.js"),
+  notHandled: __webpack_require__(/*! ./message-not-handled */ "./lib/errors/message-not-handled.js")
+}
+
+
+/***/ }),
+
+/***/ "./lib/errors/message-not-handled.js":
+/*!*******************************************!*\
+  !*** ./lib/errors/message-not-handled.js ***!
+  \*******************************************/
+/*! no static exports found */
+/***/ (function(module, exports) {
+
+module.exports = function () {
+  return new Error('This message is not handled by the system.')
 }
 
 
@@ -545,6 +559,8 @@ module.exports = events
 module.exports = {
   N2N: __webpack_require__(/*! ./main */ "./lib/main.js"),
   Neighborhood: __webpack_require__(/*! ./neighborhood */ "./lib/neighborhood/index.js"),
+  sockets: __webpack_require__(/*! ./sockets */ "./lib/sockets/index.js"),
+  signaling: __webpack_require__(/*! ./signaling */ "./lib/signaling/index.js"),
   api: __webpack_require__(/*! ./api */ "./lib/api/index.js")
 }
 
@@ -628,6 +644,10 @@ class N2N extends AbstractN2N {
     return this.view.getNeighbours()
   }
 
+  getNeighboursIds () {
+    return this.view.getNeighboursIds()
+  }
+
   async send (id, msg) {
     return this.view.send(id, msg)
   }
@@ -678,7 +698,8 @@ class Neighborhood extends NeighborhoodAPI {
     options = lmerge({
       neighborhood: {
         id,
-        SocketClass: __webpack_require__(/*! ../sockets */ "./lib/sockets/index.js").simplepeer
+        SocketClass: __webpack_require__(/*! ../sockets */ "./lib/sockets/index.js").simplepeer,
+        timeoutDisconnect: 20000
       },
       socket: {
         objectMode: false
@@ -688,6 +709,7 @@ class Neighborhood extends NeighborhoodAPI {
     super(options)
     this._debug('Options set: ', this.options)
     this.id = this.options.neighborhood.id
+    this.buffer = []
     this.signaling = {
       offline: new OfflineSignaling(this.options.signaling),
       online: new OnlineSignaling(this.options.signaling)
@@ -698,13 +720,7 @@ class Neighborhood extends NeighborhoodAPI {
       // do we have the initiator in our list of connections?
       if (!this.living.has(initiator) && type === 'new') {
         // we do have the socket for the moment, create it
-        const socket = this.createNewSocket(this.options.socket, initiator)
-        // const socket = this.createNewSocket(lmerge(this.options.socket, { initiator: false }), initiator)
-        this.living.set(initiator, {
-          socket,
-          inview: 0,
-          outview: 0
-        })
+        this.createNewSocket(this.options.socket, initiator)
         // ATTENTION: LISTENERS HAVE TO BE DECLARED ONCE!
         this.living.get(initiator).socket.on(events.socket.EMIT_OFFER, (socketOffer) => {
           this.signaling.offline.sendOffer({
@@ -714,20 +730,20 @@ class Neighborhood extends NeighborhoodAPI {
             type: 'back'
           })
         })
-        // this.living.get(initiator).socket.on('connect', () => {
-        //   this._debug('Peer %s is online', initiator)
-        // })
+        // WE RECEIVE THE OFFER ON THE ACCEPTOR
         this.living.get(initiator).socket.emit(events.socket.RECEIVE_OFFER, offer)
       } else {
         // now if it is a new offer, give it to initiator socket, otherwise to destination socket
         if (type === 'new') {
           try {
+            // WE RECEIVE THE OFFER ON THE ACCEPTOR
             this.living.get(initiator).socket.emit(events.socket.RECEIVE_OFFER, offer)
           } catch (e) {
             console.error('PLEASE REPORT THIS ISSUE: ', e)
           }
         } else if (type === 'back') {
           try {
+            // WE RECEIVE THE ACCEPTED OFFER ON THE INITIATOR
             this.living.get(destination).socket.emit(events.socket.RECEIVE_OFFER, offer)
           } catch (e) {
             console.error('PLEASE REPORT THIS ISSUE: ', e)
@@ -740,12 +756,7 @@ class Neighborhood extends NeighborhoodAPI {
       if (!initiator || !destination || !offer || !type) throw new Error('PLEASE REPORT, Problem with the offline signaling service. provide at least initiator, destination, type a,d the offer as properties in the object received')
       if (!this.living.has(initiator) && type === 'new') {
         // we do have the socket for the moment, create it
-        const socket = this.createNewSocket(this.options.socket, initiator)
-        this.living.set(initiator, {
-          socket,
-          inview: 0,
-          outview: 0
-        })
+        this.createNewSocket(this.options.socket, initiator)
         // ATTENTION: LISTENERS HAVE TO BE DECLARED ONCE!
         this.living.get(initiator).socket.on(events.socket.EMIT_OFFER, (socketOffer) => {
           this.signaling.online.sendOffer({
@@ -755,9 +766,6 @@ class Neighborhood extends NeighborhoodAPI {
             type: 'back'
           })
         })
-        // this.living.get(initiator).socket.on('connect', () => {
-        //   this._debug('Peer %s is online', initiator)
-        // })
         this.living.get(initiator).socket.emit(events.socket.RECEIVE_OFFER, offer)
       } else {
         // now if it is a new offer, give it to initiator socket, otherwise to destination socket
@@ -783,7 +791,7 @@ class Neighborhood extends NeighborhoodAPI {
     // yes? => increment occurences
     // no? => create it
     if (neighbor) {
-      if (this.living.get(neighbor.id)) {
+      if (this.living.has(neighbor.id)) {
         return this.increaseOutview(neighbor.id).then(() => {
           return neighbor.id
         })
@@ -793,7 +801,7 @@ class Neighborhood extends NeighborhoodAPI {
           await signaling.connect()
           const socket = this.createNewSocket(this.options.socket, neighbor.id)
           socket.on('error', (error) => {
-            reject(error)
+            this._manageError(error, neighbor.id, reject)
           })
           socket.on(events.socket.EMIT_OFFER, (offer) => {
             neighbor.signaling.offline.receiveOffer({
@@ -804,21 +812,10 @@ class Neighborhood extends NeighborhoodAPI {
             })
           })
           // simulate the signaling server by directly listening on the neighbor on emitted offers
-          neighbor.signaling.offline.on(events.signaling.EMIT_OFFER, ({ initiator, destination, offer, type }) => {
-            if (initiator === this.id && destination === neighbor.id && offer && type) {
-              socket._receiveOffer(offer)
-            }
+          neighbor.signaling.offline.on(events.signaling.EMIT_OFFER, (offer) => {
+            this.signaling.offline.emit(events.signaling.RECEIVE_OFFER, offer)
           })
-
-          this.living.set(neighbor.id, {
-            socket,
-            inview: 0,
-            outview: 0
-          })
-          // this.inview.set(neighbor.id)
-
           socket.connect().then(() => {
-            // console.log('[%s/offline] socket connected.', this.id)
             this.increaseOutview(neighbor.id).then(() => {
               resolve(neighbor.id)
             })
@@ -835,7 +832,7 @@ class Neighborhood extends NeighborhoodAPI {
             room: this.options.signaling.room
           })
           if (neighborId) {
-            if (this.living.get(neighborId)) {
+            if (this.living.has(neighborId)) {
               this.increaseOutview(neighborId).then(() => {
                 resolve(neighborId)
               }).catch(e => {
@@ -844,7 +841,7 @@ class Neighborhood extends NeighborhoodAPI {
             } else {
               const socket = this.createNewSocket(this.options.socket, neighborId)
               socket.on('error', (error) => {
-                reject(error)
+                this._manageError(error, neighborId, reject)
               })
               socket.on(events.socket.EMIT_OFFER, (offer) => {
                 const off = {
@@ -855,13 +852,7 @@ class Neighborhood extends NeighborhoodAPI {
                 }
                 signaling.sendOffer(off)
               })
-              this.living.set(neighborId, {
-                socket,
-                inview: 0,
-                outview: 0
-              })
               socket.connect().then(() => {
-                // console.log('[%s/online] socket connected.', this.id)
                 this.increaseOutview(neighborId).then(() => {
                   resolve(neighborId)
                 })
@@ -879,7 +870,6 @@ class Neighborhood extends NeighborhoodAPI {
 
   increaseOutview (peerId) {
     return new Promise((resolve, reject) => {
-      this.living.get(peerId).outview++
       const jobId = translator.new()
       this.send(peerId, {
         type: events.data.INVIEW_REQUEST,
@@ -887,6 +877,7 @@ class Neighborhood extends NeighborhoodAPI {
         jobId
       })
       this.on(jobId, () => {
+        this.living.get(peerId).outview++
         this.emit('connect', peerId)
         resolve()
       })
@@ -919,24 +910,28 @@ class Neighborhood extends NeighborhoodAPI {
         const p = this.living.get(userId)
         // firstly check outview, if 0 or 1 disconnect, otherwise decrease
         if ((p.outview === 1 && p.inview === 0) || (p.outview === 0 && p.inview === 1)) {
-          // TODO: timeout
           return new Promise((resolve, reject) => {
-            // console.log('disconnect:one:connection')
             const jobId = translator.new()
             this.send(userId, {
               type: events.data.DISCONNECT_DIRECT,
               id: this.id,
               jobId
             }).catch(reject)
+            const timeout = setTimeout(() => {
+              this.removeAllListeners(jobId)
+              reject(new Error('disconnection timed out. ' + userId))
+            }, this.options.neighborhood.timeoutDisconnect)
             this.on(jobId, () => {
-              console.log('receive answer disconnect')
               this.living.get(userId).socket.disconnect().then(() => {
+                clearTimeout(timeout)
                 resolve()
-              }).catch(reject)
+              }).catch(e => {
+                clearTimeout(timeout)
+                reject(e)
+              })
             })
           })
         } else {
-          // console.log('disconnect:decrease:outview')
           return new Promise((resolve, reject) => {
             // decrease, send message to decrease the inview at the other side and signal when answer
             // now send the mesage and wait for the answer
@@ -956,29 +951,22 @@ class Neighborhood extends NeighborhoodAPI {
         }
       }
     } else {
-      // console.log('disocnnect:all:connection')
-      let promises = []
-      const self = this
-      this.living.forEach((entry, id) => {
-        const p = new Promise((resolve, reject) => {
-          // just send a message to say to disconnect before to minimize the overhead
-          if (this.living.has(id)) {
-            const jobId = translator.new()
-            this.on(jobId, () => {
-              entry.socket.disconnect().then(() => {
-                resolve()
-              }).catch(reject)
-            })
-            self.send(id, {
-              type: events.data.DISCONNECT_ALL,
-              id: this.id,
-              jobId
-            })
-          }
-        })
-        promises.push(p)
+      const ids = []
+      this.living.forEach((v, k) => {
+        for (let i = 0; i < v.inview + v.outview; ++i) {
+          ids.push(k)
+        }
       })
-      return Promise.all(promises)
+      return ids.reduce((acc, id) => acc.then(() => {
+        return new Promise((resolve, reject) => {
+          this.disconnect(id).then(() => {
+            resolve()
+          }).catch(e => {
+            console.error(e)
+            resolve()
+          })
+        })
+      }), Promise.resolve())
     }
   }
 
@@ -989,15 +977,40 @@ class Neighborhood extends NeighborhoodAPI {
       this.__receive(id, data)
     })
     newSocket.on('close', () => {
-      if (this.living.has(id)) {
-        const p = this.living.get(id)
-        this.living.delete(id)
-        for (let i = 0; i < (p.inview + p.outview); ++i) {
-          this._signalDisconnect(id)
-        }
-      }
+      this._manageClose(id)
+    })
+    newSocket.on('error', error => {
+      this._manageError(error, id)
+    })
+    this.living.set(id, {
+      socket: newSocket,
+      inview: 0,
+      outview: 0
     })
     return newSocket
+  }
+
+  _manageError (error, peerId, reject) {
+    console.error('An error occured, direct deconnection of the socket:  ', error)
+    if (this.living.has(peerId)) {
+      const p = this.living.get(peerId)
+      for (let i = 0; i < (p.inview + p.outview); ++i) {
+        this._signalDisconnect(peerId)
+      }
+    }
+    if (reject) reject(error)
+  }
+
+  _manageClose (peerId) {
+    if (this.living.has(peerId)) {
+      const p = this.living.get(peerId)
+      this.living.delete(peerId)
+      for (let i = 0; i < (p.inview + p.outview); ++i) {
+        this._signalDisconnect(peerId)
+      }
+    } else {
+      console.log('[socket does not exist] Connection closed', peerId)
+    }
   }
 
   _serialize (data) {
@@ -1057,15 +1070,19 @@ class Neighborhood extends NeighborhoodAPI {
         const p = this.living.get(data.id)
         // firstly check outview, if 0 or 1 disconnect, otherwise decrease
         if ((p.outview === 1 && p.inview === 0) || (p.outview === 0 && p.inview === 1)) {
-          this.send(data.id, {
-            type: events.data.DISCONNECT_DIRECT_ANSWER,
-            id: this.id,
-            jobId: data.jobId
-          }).then(() => {
-            this.living.get(data.id).socket.disconnect().then(() => {
-              return Promise.resolve()
+          setTimeout(() => {
+            this.send(data.id, {
+              type: events.data.DISCONNECT_DIRECT_ANSWER,
+              id: this.id,
+              jobId: data.jobId
+            }).then(() => {
+              if (this.living.has(data.id)) {
+                this.living.get(data.id).socket.disconnect().catch(e => {
+                  console.error(e)
+                })
+              }
             })
-          })
+          }, 5000)
         }
       }
     } else if (data && data.type && data.id && data.jobId && data.type === events.data.DISCONNECT_DIRECT_ANSWER) {
@@ -1073,17 +1090,18 @@ class Neighborhood extends NeighborhoodAPI {
     } else if (data && data.type && data.id && data.type === events.data.DISCONNECT_ALL) {
       // check for the number of inview/outview
       // if it's ok, just disconnect by sending a response
-      console.log('receive direct disconnection requst')
       if (this.living.has(data.id)) {
         // firstly check outview, if 0 or 1 disconnect, otherwise decrease
         this.send(data.id, {
-          type: events.data.DISCONNECT_DIRECT_ANSWER,
+          type: events.data.DISCONNECT_ALL_ANSWER,
           id: this.id,
           jobId: data.jobId
         }).then(() => {
-          this.living.get(data.id).socket.disconnect().then(() => {
-            return Promise.resolve()
-          })
+          if (this.living.has(data.id)) {
+            this.living.get(data.id).socket.disconnect().catch(e => {
+              console.error(e)
+            })
+          }
         })
       }
     } else if (data && data.type && data.id && data.jobId && data.type === events.data.DISCONNECT_ALL_ANSWER) {
@@ -1245,7 +1263,8 @@ module.exports = {"port":5555,"host":"http://localhost","max":20};
 /***/ (function(module, exports, __webpack_require__) {
 
 module.exports = {
-  simplepeer: __webpack_require__(/*! ./simple-peer */ "./lib/sockets/simple-peer.js")
+  simplepeer: __webpack_require__(/*! ./simple-peer */ "./lib/sockets/simple-peer.js"),
+  moc: __webpack_require__(/*! ./webrtc-moc */ "./lib/sockets/webrtc-moc.js")
 }
 
 
@@ -1272,6 +1291,8 @@ const translator = short()
 class SimplePeerWrapper extends Socket {
   constructor (options) {
     options = lmerge({
+      moc: false,
+      MocClass: __webpack_require__(/*! ./webrtc-moc */ "./lib/sockets/webrtc-moc.js"),
       trickle: true,
       initiator: false,
       config: {
@@ -1280,27 +1301,6 @@ class SimplePeerWrapper extends Socket {
     }, options)
     super(options)
     this.socketId = translator.new()
-    this._socket = new SimplePeer(lmerge({ initiator: false }, options))
-    this._debug('Simple-peer Socket options set: ', options)
-    this._socket.on('connect', () => {
-      this.emit('connect')
-    })
-    this._socket.on('signal', (offer) => {
-      this.statistics.offerSent++
-      this._debug('[socket:%s] Send an accepted offer: ', this.socketId, this.statistics, offer)
-      this.emitOffer(offer)
-    })
-    this._socket.on('close', () => {
-      this._debug('socket closed.')
-      this.emit('close')
-    })
-    this._socket.on('error', (error) => {
-      this._manageErrors(error)
-    })
-    this._socket.on('data', (...args) => {
-      this._debug('[socket:%s] receiving data...', this.socketId, ...args)
-      this._receiveData(...args)
-    })
 
     this.statistics = {
       offerSent: 0,
@@ -1310,29 +1310,65 @@ class SimplePeerWrapper extends Socket {
 
   _receiveOffer (offer) {
     this.statistics.offerReceived++
-    this._debug('[socket:%s] the socket just received an offer', this.socketId, this.statistics, this.options.initiator)
-    this._socket.signal(offer)
+    this._debug('[socket:%s] the socket just received an offer', this.socketId, this.statistics, this.options.initiator, offer)
+    this._create()
+    this.__socket.signal(offer)
+  }
+  _create () {
+    if (!this.__socket) {
+      if (this.options.moc) {
+        this.__socket = new this.options.MocClass(lmerge({ initiator: false }, this.options))
+      } else {
+        this.__socket = new SimplePeer(lmerge({ initiator: false }, this.options))
+      }
+      this._debug('Simple-peer Socket options set: ', this.options)
+      this.__socket.on('connect', () => {
+        this.emit('connect')
+      })
+      this.__socket.on('signal', (offer) => {
+        this.statistics.offerSent++
+        this._debug('[socket:%s] Send an accepted offer: ', this.socketId, this.statistics, offer)
+        this.emitOffer(offer)
+      })
+      this.__socket.on('close', () => {
+        this._debug('socket closed.')
+        this.emit('close')
+      })
+      this.__socket.on('error', (error) => {
+        this.__socket.destroy()
+        this._manageErrors(error)
+      })
+      this.__socket.on('data', (...args) => {
+        this._debug('[socket:%s] receiving data...', this.socketId, ...args)
+        this._receiveData(...args)
+      })
+    }
   }
 
   _connect (options = this.options.socket) {
     options.initiator = true
     this._debug('Options for the new socket: ', options)
     return new Promise(async (resolve, reject) => {
-      this._socket = new SimplePeer(options)
-      this._socket.on('signal', (offer) => {
+      if (options.moc) {
+        this.__socket = new this.options.MocClass(options)
+      } else {
+        this.__socket = new SimplePeer(options)
+      }
+      this.__socket.on('signal', (offer) => {
         this.statistics.offerSent++
         this.emitOffer(offer)
       })
-      this._socket.on('connect', () => {
+      this.__socket.on('connect', () => {
         resolve()
       })
-      this._socket.on('error', (error) => {
+      this.__socket.on('error', (error) => {
+        this.__socket.destroy()
         this._manageErrors(error)
       })
-      this._socket.on('data', (...args) => {
+      this.__socket.on('data', (...args) => {
         this._receiveData(...args)
       })
-      this._socket.on('close', () => {
+      this.__socket.on('close', () => {
         this._debug('socket closed.')
         this.emit('close')
       })
@@ -1346,7 +1382,8 @@ class SimplePeerWrapper extends Socket {
   async _send (data) {
     this._debug('sending data: ', data)
     try {
-      this._socket.send(data)
+      this._create()
+      this.__socket.send(data)
       return Promise.resolve()
     } catch (e) {
       return Promise.reject(e)
@@ -1355,7 +1392,8 @@ class SimplePeerWrapper extends Socket {
 
   async _disconnect () {
     try {
-      this._socket.destroy()
+      this._create()
+      this.__socket.destroy()
       return Promise.resolve()
     } catch (e) {
       return Promise.reject(e)
@@ -1365,6 +1403,208 @@ class SimplePeerWrapper extends Socket {
 
 module.exports = SimplePeerWrapper
 
+
+/***/ }),
+
+/***/ "./lib/sockets/webrtc-moc.js":
+/*!***********************************!*\
+  !*** ./lib/sockets/webrtc-moc.js ***!
+  \***********************************/
+/*! no static exports found */
+/***/ (function(module, exports, __webpack_require__) {
+
+/* WEBPACK VAR INJECTION */(function(process) {const EventEmitter = __webpack_require__(/*! events */ "./node_modules/events/events.js")
+const lmerge = __webpack_require__(/*! lodash.merge */ "./node_modules/lodash.merge/index.js")
+const short = __webpack_require__(/*! short-uuid */ "./node_modules/short-uuid/index.js")
+const translator = short()
+const debug = __webpack_require__(/*! debug */ "./node_modules/debug/src/browser.js")
+const debugManager = debug('spa')
+
+const DEFAULT_OPTIONS = () => {
+  return {
+    id: translator.new(),
+    initiator: false
+  }
+}
+
+class Manager {
+  constructor () {
+    this._statistics = {
+      message: 0
+    }
+    this.manager = new Map()
+    this._options = {
+      latency: (send) => { setTimeout(send, 0) }
+    }
+    debugManager('manager initialized')
+  }
+  get stats () {
+    return this._statistics
+  }
+
+  set (peerId, peer) {
+    if (this.manager.has(peerId)) {
+      throw new Error('this peer already exsists: ' + peerId)
+    }
+    this.manager.set(peerId, peer)
+  }
+
+  connect (from, to) {
+    debugManager('peer connected from/to: ', from, to)
+    this.manager.get(to)._connectWith(from)
+    this.manager.get(from)._connectWith(to)
+  }
+
+  destroy (from, to) {
+    debugManager('peer disconnected from/to: ', from, to)
+    if (this.manager.get(from)) {
+      this.manager.get(from)._close()
+    }
+    if (this.manager.get(to)) {
+      this.manager.get(to)._close()
+    }
+  }
+
+  send (from, to, msg, retry = 0) {
+    this._send(from, to, msg, retry)
+  }
+
+  _send (from, to, msg, retry = 0) {
+    try {
+      if (!this.manager.has(from) || !this.manager.has(to)) throw new Error('need a (from) and (to) peer.')
+      this.manager.get(to).emit('data', msg)
+      this._statistics.message++
+    } catch (e) {
+      throw new Error('cannot send the message. perhaps your destination is not reachable.', e)
+    }
+  }
+}
+const manager = new Manager()
+
+module.exports = class SimplePeerAbstract extends EventEmitter {
+  constructor (options) {
+    super()
+    this._manager = manager
+    this._options = lmerge(DEFAULT_OPTIONS(), options)
+    this.id = this._options.id
+    this._isNegotiating = false
+    this.connected = false
+    this.disconnected = false
+    this.connectedWith = undefined
+    this.__initiated = false
+    this.messageBuffer = []
+    debugManager('peer initiated:', this.id, this._options.initiator)
+    if (this._options.initiator) {
+      // workaround to wait for a listener on 'signal'
+      process.nextTick(() => {
+        this._init()
+      })
+    }
+    this._manager.set(this.id, this)
+    this.on('internal_close', () => {
+      this._manager.manager.delete(this.id)
+    })
+  }
+
+  static get manager () {
+    return manager
+  }
+
+  send (data) {
+    if (!this.connectedWith) {
+      this.messageBuffer.push(data)
+    } else {
+      if (this.messageBuffer.length > 0) {
+        this._reviewMessageBuffer()
+      }
+      if (this.connectedWith) {
+        this._send(this.connectedWith, data)
+      } else {
+        this.messageBuffer.push(data)
+      }
+    }
+  }
+
+  destroy () {
+    this._manager.destroy(this.id, this.connectedWith)
+  }
+
+  signal (data) {
+    if (data.type === 'accept') {
+      debugManager('offer-accept received:', data)
+      this._connect(data)
+    } else if (data.type === 'init') {
+      this._isNegotiating = true
+      debugManager('offer-init received:', data)
+      this.emit('signal', this._createAccept(data))
+    }
+  }
+
+  _error (error) {
+    debugManager(error)
+    this.emit('internal_close')
+    this.emit('error', error)
+  }
+
+  _close () {
+    this.emit('internal_close')
+    debugManager('[%s] is closed.', this.id)
+    this.emit('close')
+  }
+
+  _init () {
+    this._isNegotiating = true
+    const offer = this._createOffer()
+    offer.count = 1
+    this.emit('signal', offer)
+  }
+
+  _createOffer () {
+    const newOffer = {
+      offerId: translator.new(),
+      type: 'init',
+      offer: {
+        initiator: this.id
+      }
+    }
+    return newOffer
+  }
+  _createAccept (offer) {
+    const acceptedOffer = this._createOffer()
+    acceptedOffer.type = 'accept'
+    acceptedOffer.offerId = offer.offerId
+    acceptedOffer.offer.initiator = offer.offer.initiator
+    acceptedOffer.offer.acceptor = this.id
+    acceptedOffer.count = offer.count
+    return acceptedOffer
+  }
+
+  _reviewMessageBuffer () {
+    debugManager('Review the buffer: ', this.messageBuffer.length)
+    while (this.connectedWith && this.messageBuffer.length !== 0) {
+      this._send(this.messageBuffer.pop())
+    }
+  }
+
+  _send (to = this.connectedWith, data) {
+    if (!to) throw new Error('It must have a destination.')
+    this._manager.send(this.id, to, data)
+  }
+
+  _connect (offer) {
+    if (!offer.offer.acceptor) throw new Error('It must have an acceptor')
+    this._manager.connect(offer.offer.initiator, offer.offer.acceptor)
+  }
+
+  _connectWith (connectedWith) {
+    this.connected = true
+    this._isNegotiating = false
+    this.connectedWith = connectedWith
+    this.emit('connect')
+  }
+}
+
+/* WEBPACK VAR INJECTION */}.call(this, __webpack_require__(/*! ./../../node_modules/process/browser.js */ "./node_modules/process/browser.js")))
 
 /***/ }),
 

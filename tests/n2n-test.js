@@ -1,5 +1,4 @@
 const N2N = require('../lib').N2N
-const wrtc = require('wrtc')
 const assert = require('assert')
 const utils = require('../lib/utils')
 let ss
@@ -20,13 +19,13 @@ describe('N2N connection', function () {
     const a = new N2N({
       socket: {
         trickle: true,
-        wrtc
+        moc: true
       }
     })
     const b = new N2N({
       socket: {
         trickle: true,
-        wrtc
+        moc: true
       }
     })
     const peers = []
@@ -64,13 +63,13 @@ describe('N2N connection', function () {
     const a = new N2N({
       socket: {
         trickle: true,
-        wrtc
+        moc: true
       }
     })
     const b = new N2N({
       socket: {
         trickle: true,
-        wrtc
+        moc: true
       }
     })
     await a.connect(b)
@@ -90,13 +89,13 @@ describe('N2N connection', function () {
     const a = new N2N({
       socket: {
         trickle: true,
-        wrtc
+        moc: true
       }
     })
     const b = new N2N({
       socket: {
         trickle: true,
-        wrtc
+        moc: true
       }
     })
     await a.connect(b)
@@ -134,13 +133,13 @@ describe('N2N connection', function () {
     const a = new N2N({
       socket: {
         trickle: true,
-        wrtc
+        moc: true
       }
     })
     const b = new N2N({
       socket: {
         trickle: true,
-        wrtc
+        moc: true
       }
     })
     await b.connect()
@@ -179,13 +178,13 @@ describe('N2N connection', function () {
     const a = new N2N({
       socket: {
         trickle: true,
-        wrtc
+        moc: true
       }
     })
     const b = new N2N({
       socket: {
         trickle: true,
-        wrtc
+        moc: true
       }
     })
     a.on('close', (id) => {
@@ -221,13 +220,13 @@ describe('N2N connection', function () {
     const a = new N2N({
       socket: {
         trickle: true,
-        wrtc
+        moc: true
       }
     })
     const b = new N2N({
       socket: {
         trickle: true,
-        wrtc
+        moc: true
       }
     })
     a.on('close', (id) => {
@@ -278,13 +277,13 @@ describe('N2N connection', function () {
     const a = new N2N({
       socket: {
         trickle: true,
-        wrtc
+        moc: true
       }
     })
     const b = new N2N({
       socket: {
         trickle: true,
-        wrtc
+        moc: true
       }
     })
     a.on('close', (id) => {

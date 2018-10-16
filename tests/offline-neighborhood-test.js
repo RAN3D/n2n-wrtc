@@ -1,5 +1,4 @@
 const Neighborhood = require('../lib').Neighborhood
-const wrtc = require('wrtc')
 const assert = require('assert')
 
 describe('[Neighborhood] Offline connection', function () {
@@ -8,13 +7,13 @@ describe('[Neighborhood] Offline connection', function () {
     const a = new Neighborhood({
       socket: {
         trickle: true,
-        wrtc
+        moc: true
       }
     })
     const b = new Neighborhood({
       socket: {
         trickle: true,
-        wrtc
+        moc: true
       }
     })
     await a.connect(b)

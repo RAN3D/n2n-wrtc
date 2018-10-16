@@ -1,5 +1,4 @@
 const Neighborhood = require('../lib').Neighborhood
-const wrtc = require('wrtc')
 const assert = require('assert')
 
 describe('Disconnection', function () {
@@ -11,7 +10,7 @@ describe('Disconnection', function () {
       },
       socket: {
         trickle: true,
-        wrtc
+        moc: true
       }
     })
     const b = new Neighborhood({
@@ -20,8 +19,14 @@ describe('Disconnection', function () {
       },
       socket: {
         trickle: true,
-        wrtc
+        moc: true
       }
+    })
+    a.on('connect', (id) => {
+      console.log('A is connected to:', id)
+    })
+    b.on('connect', (id) => {
+      console.log('B is connected to:', id)
     })
     const neigh = await a.connect(b)
     assert.strictEqual(neigh, b.id)
