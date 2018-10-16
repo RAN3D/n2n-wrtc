@@ -59,17 +59,16 @@ g.refresh()
 async function connection () {
   await a.connect() // connected, becasue he is alone
   await b.connect() // B => A
-  return a.connect() // A => B: 1:1 1:1
+  await a.connect() // A => B: 1:1 1:1
+  return a.connect()
 }
 
 connection().then(() => {
-  console.log()
-  console.log(a.getNeighboursInview(), a.getNeighboursOutview())
-  console.log(b.getNeighboursInview(), b.getNeighboursOutview())
+  neigh()
 })
 
 function neigh () {
-  console.log(a.getNeighboursInview(), a.getNeighboursOutview())
-  console.log(b.getNeighboursInview(), b.getNeighboursOutview())
+  console.log('A:inview: ', a.getNeighboursInview().map(p => p.peer.occurences), 'A:outview', a.getNeighboursOutview().map(p => p.peer.occurences))
+  console.log('B:inview', b.getNeighboursInview().map(p => p.peer.occurences), 'B:outview', b.getNeighboursOutview().map(p => p.peer.occurences))
   console.log(a.getNeighbours(), b.getNeighbours())
 }

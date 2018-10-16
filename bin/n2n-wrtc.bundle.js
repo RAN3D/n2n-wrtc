@@ -196,7 +196,8 @@ class Neighborhood extends EventEmitter {
     super()
     this._debug = (__webpack_require__(/*! debug */ "./node_modules/debug/src/browser.js"))('n2n:neighborhood')
     this.options = options
-    this.living = new Map()
+    this.livingInview = new Map()
+    this.livingOutview = new Map()
   }
 
   receiveData (id, data) {
@@ -216,11 +217,26 @@ class Neighborhood extends EventEmitter {
   }
 
   getNeighbours () {
-    return this.living
+    return this.getNeighboursOutview()
   }
 
   getNeighboursIds () {
-    return [...this.living.keys()]
+    return this.getNeighboursOutview().map(p => p.id)
+  }
+
+  getNeighboursOutview () {
+    const res = []
+    this.livingOutview.forEach((peer, id) => {
+      if (peer.occurences >= 1) res.push({ peer, id })
+    })
+    return res
+  }
+  getNeighboursInview () {
+    const res = []
+    this.livingInview.forEach((peer, id) => {
+      if (peer.occurences >= 1) res.push({ peer, id })
+    })
+    return res
   }
 }
 
@@ -533,14 +549,7 @@ const events = {
     EMIT_OFFER: 'signaling-eo'
   },
   data: {
-    INVIEW_REQUEST: 'n:i:i', // 'neighborhood:increase:inview',
-    INVIEW_ANSWER: 'n:i:i:a', // 'neighborhood:increase:inview:answer'
-    DISCONNECT_REQUEST: 'd:d:i', // 'disconnection:decrease:inview'
-    DISCONNECT_ANSWER: 'd:d:i:a', // 'disconnection:decrease:inview:answer'
-    DISCONNECT_DIRECT: 'd:i', // just disconnect immediatly by receiving this
-    DISCONNECT_DIRECT_ANSWER: 'd:i:a', // when receiving the answer disconnect
-    DISCONNECT_ALL: 'd:a', // disconnect all connection
-    DISCONNECT_ALL_ANSWER: 'd:a:a' // disconnect all connection answer
+    OCC_INC: 'o:i' // when we have to increase the occurence
   }
 }
 
@@ -625,19 +634,11 @@ class N2N extends AbstractN2N {
   }
 
   getNeighboursInview () {
-    const i = []
-    this.view.getNeighbours().forEach((v, id) => {
-      if (v.inview > 0) i.push(id)
-    })
-    return i
+    return this.view.getNeighboursInview()
   }
 
   getNeighboursOutview () {
-    const o = []
-    this.view.getNeighbours().forEach((v, id) => {
-      if (v.outview > 0) o.push(id)
-    })
-    return o
+    return this.view.getNeighboursOutview()
   }
 
   getNeighbours () {
@@ -709,7 +710,6 @@ class Neighborhood extends NeighborhoodAPI {
     super(options)
     this._debug('Options set: ', this.options)
     this.id = this.options.neighborhood.id
-    this.buffer = []
     this.signaling = {
       offline: new OfflineSignaling(this.options.signaling),
       online: new OnlineSignaling(this.options.signaling)
@@ -718,11 +718,11 @@ class Neighborhood extends NeighborhoodAPI {
     this.signaling.offline.on(events.signaling.RECEIVE_OFFER, ({ initiator, destination, type, offer }) => {
       if (!initiator || !destination || !offer || !type) throw new Error('PLEASE REPORT, Problem with the offline signaling service. provide at least initiator, destination, type a,d the offer as properties in the object received')
       // do we have the initiator in our list of connections?
-      if (!this.living.has(initiator) && type === 'new') {
+      if (!this.livingInview.has(initiator) && type === 'new') {
         // we do have the socket for the moment, create it
-        this.createNewSocket(this.options.socket, initiator)
+        this.createNewSocket(this.options.socket, initiator, false)
         // ATTENTION: LISTENERS HAVE TO BE DECLARED ONCE!
-        this.living.get(initiator).socket.on(events.socket.EMIT_OFFER, (socketOffer) => {
+        this.livingInview.get(initiator).socket.on(events.socket.EMIT_OFFER, (socketOffer) => {
           this.signaling.offline.sendOffer({
             initiator,
             destination,
@@ -731,20 +731,20 @@ class Neighborhood extends NeighborhoodAPI {
           })
         })
         // WE RECEIVE THE OFFER ON THE ACCEPTOR
-        this.living.get(initiator).socket.emit(events.socket.RECEIVE_OFFER, offer)
+        this.livingInview.get(initiator).socket.emit(events.socket.RECEIVE_OFFER, offer)
       } else {
         // now if it is a new offer, give it to initiator socket, otherwise to destination socket
         if (type === 'new') {
           try {
             // WE RECEIVE THE OFFER ON THE ACCEPTOR
-            this.living.get(initiator).socket.emit(events.socket.RECEIVE_OFFER, offer)
+            this.livingInview.get(initiator).socket.emit(events.socket.RECEIVE_OFFER, offer)
           } catch (e) {
             console.error('PLEASE REPORT THIS ISSUE: ', e)
           }
         } else if (type === 'back') {
           try {
             // WE RECEIVE THE ACCEPTED OFFER ON THE INITIATOR
-            this.living.get(destination).socket.emit(events.socket.RECEIVE_OFFER, offer)
+            this.livingOutview.get(destination).socket.emit(events.socket.RECEIVE_OFFER, offer)
           } catch (e) {
             console.error('PLEASE REPORT THIS ISSUE: ', e)
           }
@@ -754,11 +754,11 @@ class Neighborhood extends NeighborhoodAPI {
 
     this.signaling.online.on(events.signaling.RECEIVE_OFFER, ({ initiator, destination, type, offer }) => {
       if (!initiator || !destination || !offer || !type) throw new Error('PLEASE REPORT, Problem with the offline signaling service. provide at least initiator, destination, type a,d the offer as properties in the object received')
-      if (!this.living.has(initiator) && type === 'new') {
+      if (!this.livingInview.has(initiator) && type === 'new') {
         // we do have the socket for the moment, create it
-        this.createNewSocket(this.options.socket, initiator)
+        this.createNewSocket(this.options.socket, initiator, false)
         // ATTENTION: LISTENERS HAVE TO BE DECLARED ONCE!
-        this.living.get(initiator).socket.on(events.socket.EMIT_OFFER, (socketOffer) => {
+        this.livingInview.get(initiator).socket.on(events.socket.EMIT_OFFER, (socketOffer) => {
           this.signaling.online.sendOffer({
             initiator,
             destination,
@@ -766,18 +766,18 @@ class Neighborhood extends NeighborhoodAPI {
             type: 'back'
           })
         })
-        this.living.get(initiator).socket.emit(events.socket.RECEIVE_OFFER, offer)
+        this.livingInview.get(initiator).socket.emit(events.socket.RECEIVE_OFFER, offer)
       } else {
         // now if it is a new offer, give it to initiator socket, otherwise to destination socket
         if (type === 'new') {
           try {
-            this.living.get(initiator).socket.emit(events.socket.RECEIVE_OFFER, offer)
+            this.livingInview.get(initiator).socket.emit(events.socket.RECEIVE_OFFER, offer)
           } catch (e) {
             console.error('PLEASE REPORT THIS ISSUE: ', e)
           }
         } else if (type === 'back') {
           try {
-            this.living.get(destination).socket.emit(events.socket.RECEIVE_OFFER, offer)
+            this.livingOutview.get(destination).socket.emit(events.socket.RECEIVE_OFFER, offer)
           } catch (e) {
             console.error('PLEASE REPORT THIS ISSUE: ', e)
           }
@@ -791,15 +791,17 @@ class Neighborhood extends NeighborhoodAPI {
     // yes? => increment occurences
     // no? => create it
     if (neighbor) {
-      if (this.living.has(neighbor.id)) {
-        return this.increaseOutview(neighbor.id).then(() => {
+      if (this.livingOutview.has(neighbor.id)) {
+        console.log('direct with logical link')
+        return this.increaseOccurences(neighbor.id).then(() => {
           return neighbor.id
         })
       } else {
+        console.log('direct with physical link')
         signaling = this.signaling.offline
         return new Promise(async (resolve, reject) => {
           await signaling.connect()
-          const socket = this.createNewSocket(this.options.socket, neighbor.id)
+          const socket = this.createNewSocket(this.options.socket, neighbor.id, true)
           socket.on('error', (error) => {
             this._manageError(error, neighbor.id, reject)
           })
@@ -816,7 +818,7 @@ class Neighborhood extends NeighborhoodAPI {
             this.signaling.offline.emit(events.signaling.RECEIVE_OFFER, offer)
           })
           socket.connect().then(() => {
-            this.increaseOutview(neighbor.id).then(() => {
+            this.increaseOccurences(neighbor.id, true).then(() => {
               resolve(neighbor.id)
             })
           }).catch(e => {
@@ -832,14 +834,14 @@ class Neighborhood extends NeighborhoodAPI {
             room: this.options.signaling.room
           })
           if (neighborId) {
-            if (this.living.has(neighborId)) {
-              this.increaseOutview(neighborId).then(() => {
+            if (this.livingOutview.has(neighborId)) {
+              this.increaseOccurences(neighborId).then(() => {
                 resolve(neighborId)
               }).catch(e => {
                 reject(e)
               })
             } else {
-              const socket = this.createNewSocket(this.options.socket, neighborId)
+              const socket = this.createNewSocket(this.options.socket, neighborId, true)
               socket.on('error', (error) => {
                 this._manageError(error, neighborId, reject)
               })
@@ -853,7 +855,7 @@ class Neighborhood extends NeighborhoodAPI {
                 signaling.sendOffer(off)
               })
               socket.connect().then(() => {
-                this.increaseOutview(neighborId).then(() => {
+                this.increaseOccurences(neighborId, true).then(() => {
                   resolve(neighborId)
                 })
               }).catch(reject)
@@ -868,33 +870,39 @@ class Neighborhood extends NeighborhoodAPI {
     }
   }
 
-  increaseOutview (peerId) {
+  increaseOccurences (peerId) {
+    console.log(this.livingOutview, this.livingInview)
     return new Promise((resolve, reject) => {
-      const jobId = translator.new()
-      this.send(peerId, {
-        type: events.data.INVIEW_REQUEST,
-        id: this.id,
-        jobId
-      })
-      this.on(jobId, () => {
-        this.living.get(peerId).outview++
+      if (!this.livingOutview.has(peerId)) {
+        reject(errors.peerNotFound(peerId))
+      } else {
+        this.send(peerId, {
+          type: events.data.OCC_INC,
+          id: this.id
+        })
+        this.increaseOccOutview(peerId)
         this.emit('connect', peerId)
         resolve()
-      })
+      }
     })
   }
 
-  async increaseInview (peerId) {
-    this.living.get(peerId).inview++
+  increaseOccInview (peerId) {
+    this.livingInview.get(peerId).occurences++
   }
 
-  async decreaseInview (peerId) {
-    this.living.get(peerId).inview--
+  increaseOccOutview (peerId) {
+    this.livingOutview.get(peerId).occurences++
   }
 
   async send (peerId, message) {
-    if (this.living.has(peerId)) return this.living.get(peerId).socket.send(this._serialize(message))
-    throw errors.peerNotFound(peerId)
+    if (this.livingOutview.has(peerId)) {
+      return this.livingOutview.get(peerId).socket.send(this._serialize(message))
+    } else if (this.livingInview.has(peerId)) {
+      return this.livingInview.get(peerId).socket.send(this._serialize(message))
+    } else {
+      throw errors.peerNotFound(peerId)
+    }
   }
 
   /**
@@ -970,7 +978,7 @@ class Neighborhood extends NeighborhoodAPI {
     }
   }
 
-  createNewSocket (options, id) {
+  createNewSocket (options, id, outview = false) {
     const newSocket = new this.options.neighborhood.SocketClass(options)
     this._debug('[%s] new socket created: %s', this.id, newSocket.socketId)
     newSocket.on('data', (data) => {
@@ -982,11 +990,17 @@ class Neighborhood extends NeighborhoodAPI {
     newSocket.on('error', error => {
       this._manageError(error, id)
     })
-    this.living.set(id, {
-      socket: newSocket,
-      inview: 0,
-      outview: 0
-    })
+    if (outview) {
+      this.livingOutview.set(id, {
+        socket: newSocket,
+        occurences: 0
+      })
+    } else {
+      this.livingInview.set(id, {
+        socket: newSocket,
+        occurences: 0
+      })
+    }
     return newSocket
   }
 
@@ -1030,82 +1044,9 @@ class Neighborhood extends NeighborhoodAPI {
 
   __receive (id, data) {
     data = this._deserialize(data)
-    if (data && data.type && data.id && data.jobId && data.type === events.data.INVIEW_REQUEST) {
-      this.increaseInview(data.id).then(() => {
-        this._signalConnect(data.id)
-        // console.log('[%s] receive an inview increase request.', this.id)
-        this.send(id, {
-          type: events.data.INVIEW_ANSWER,
-          jobId: data.jobId,
-          id: this.id
-        })
-      }).catch(e => {
-        console.error('PLEASE REPORT', e)
-      })
-    } else if (data && data.type && data.id && data.jobId && data.type === events.data.INVIEW_ANSWER) {
-      // console.log('[%s] receive an inview increase answer.', this.id, data)
-      this.emit(data.jobId)
-    } else if (data && data.type && data.id && data.jobId && data.type === events.data.DISCONNECT_REQUEST) {
-      this.decreaseInview(data.id).then(() => {
-        // console.log('[%s] receive an inview increase request.', this.id)
-        this.send(id, {
-          type: events.data.DISCONNECT_ANSWER,
-          jobId: data.jobId,
-          id: this.id
-        }).then(() => {
-          this._signalDisconnect(data.id)
-        }).catch(e => {
-          console.error(new Error('Peer unreachable: ', e))
-        })
-      }).catch(e => {
-        console.error('PLEASE REPORT', e)
-      })
-    } else if (data && data.type && data.id && data.jobId && data.type === events.data.DISCONNECT_ANSWER) {
-      // console.log('[%s] receive an inview increase answer.', this.id, data)
-      this.emit(data.jobId)
-    } else if (data && data.type && data.id && data.type === events.data.DISCONNECT_DIRECT) {
-      // check for the number of inview/outview
-      // if it's ok, just disconnect by sending a response
-      if (this.living.has(data.id)) {
-        const p = this.living.get(data.id)
-        // firstly check outview, if 0 or 1 disconnect, otherwise decrease
-        if ((p.outview === 1 && p.inview === 0) || (p.outview === 0 && p.inview === 1)) {
-          setTimeout(() => {
-            this.send(data.id, {
-              type: events.data.DISCONNECT_DIRECT_ANSWER,
-              id: this.id,
-              jobId: data.jobId
-            }).then(() => {
-              if (this.living.has(data.id)) {
-                this.living.get(data.id).socket.disconnect().catch(e => {
-                  console.error(e)
-                })
-              }
-            })
-          }, 5000)
-        }
-      }
-    } else if (data && data.type && data.id && data.jobId && data.type === events.data.DISCONNECT_DIRECT_ANSWER) {
-      this.emit(data.jobId)
-    } else if (data && data.type && data.id && data.type === events.data.DISCONNECT_ALL) {
-      // check for the number of inview/outview
-      // if it's ok, just disconnect by sending a response
-      if (this.living.has(data.id)) {
-        // firstly check outview, if 0 or 1 disconnect, otherwise decrease
-        this.send(data.id, {
-          type: events.data.DISCONNECT_ALL_ANSWER,
-          id: this.id,
-          jobId: data.jobId
-        }).then(() => {
-          if (this.living.has(data.id)) {
-            this.living.get(data.id).socket.disconnect().catch(e => {
-              console.error(e)
-            })
-          }
-        })
-      }
-    } else if (data && data.type && data.id && data.jobId && data.type === events.data.DISCONNECT_ALL_ANSWER) {
-      this.emit(data.jobId)
+    console.log('receive: ', id, data)
+    if (data && data.type && data.id && data.type === events.data.OCC_INC) {
+      this.increaseOccInview(data.id)
     } else {
       this.receiveData(id, data)
     }
