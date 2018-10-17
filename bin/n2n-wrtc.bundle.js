@@ -728,8 +728,8 @@ class Neighborhood extends EventEmitter {
 
   /**
    * Connect us to a neighbor using a signaling service, if neighbor is null we use an online signaling service to connect the neighbor to an already existing network. If we are alone, meaning that the peer id we receive using the signaling service is null, we are automatically connected. If the neighbor is an instance of Neighborhood, we directly connect them through an offline signaling service.
-   * @param  {[type]}  neighbor                          Neighborhood instance we want to connect to directly
-   * @param  {[type]}  [signaling=this.signaling.online] The online service we want to use. Dont forget to active the listener to receive incoming messages
+   * @param  {Neighborhood}  neighbor                          Neighborhood instance we want to connect to directly
+   * @param  {Signaling}  [signaling=this.signaling.online] The online service we want to use. Dont forget to active the listener to receive incoming messages
    * @return {Promise} This method is resolved when the connection is successfully done, otherwise rejected
    */
   async connect (neighbor, signaling = this.signaling.online) {
@@ -829,8 +829,8 @@ class Neighborhood extends EventEmitter {
 
   /**
    * @description Increase the occurence of the socket in the outview and send a message to the peer connected with to increase its inview
-   * @param  {[type]} peerId [description]
-   * @return {[type]}        [description]
+   * @param  {String} peerId [description]
+   * @return {void}        [description]
    */
   async increaseOccurences (peerId) {
     if (!this.livingOutview.has(peerId)) {
@@ -1121,7 +1121,7 @@ class Neighborhood extends EventEmitter {
 
   /**
    * @description Get all reachable neighbours including socket, occurences, lock and ids
-   * @return {[type]} [description]
+   * @return {Array<Object>} Array of object [{peer: {socket, occurences, lock}, id}]
    */
   getNeighbours () {
     return this.getNeighboursOutview()
