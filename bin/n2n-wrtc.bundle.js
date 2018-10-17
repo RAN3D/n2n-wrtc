@@ -995,16 +995,20 @@ class Neighborhood extends EventEmitter {
           ids.push(k)
         }
       })
-      return ids.reduce((acc, id) => acc.then(() => {
-        return new Promise((resolve, reject) => {
-          this.disconnect(id).then(() => {
-            resolve()
-          }).catch(e => {
-            console.error(e)
-            resolve()
+      if (ids.length === 0) {
+        throw new Error('No peers to disconnect')
+      } else {
+        return ids.reduce((acc, id) => acc.then(() => {
+          return new Promise((resolve, reject) => {
+            this.disconnect(id).then(() => {
+              resolve()
+            }).catch(e => {
+              console.error(e)
+              resolve()
+            })
           })
-        })
-      }), Promise.resolve())
+        }), Promise.resolve())
+      }
     }
   }
 
@@ -1147,7 +1151,6 @@ class Neighborhood extends EventEmitter {
    */
   __receive (id, data) {
     data = this._deserialize(data)
-    console.log(id, data)
     if (data && data.type && data.id && data.type === events.data.OCC_DEC) {
       this.decreaseOccInview(data.id)
     } else if (data && data.type && data.id && data.type === events.data.OCC_INC) {

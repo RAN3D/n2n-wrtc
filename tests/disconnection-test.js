@@ -31,24 +31,23 @@ describe('Disconnection', function () {
     const neigh = await a.connect(b)
     assert.strictEqual(neigh, b.id)
     assert.strictEqual(a.getNeighboursIds().length, 1)
-    assert.strictEqual(b.getNeighboursIds().length, 1)
+    assert.strictEqual(b.getNeighboursIds().length, 0)
+    // we ccan only have 0 neighbour in B becasue it is an inview socket
     return new Promise((resolve, reject) => {
-      a.disconnect().then(async () => {
-        const aneigh = a.getNeighbours()
-        aneigh.forEach(p => {
-          assert.strictEqual(p.status, 'disconnected')
-        })
-        b.on('close', (id) => {
-          assert.strictEqual(id, a.id)
+      b.disconnect().catch(() => {
+        a.disconnect().then(async () => {
+          a.on('close', (id) => {
+            assert.strictEqual(id, b.id)
+            assert.strictEqual(a.getNeighboursIds().length, 0)
+            assert.strictEqual(b.getNeighboursIds().length, 0)
+            resolve()
+          })
+          assert.strictEqual(a.getNeighboursIds().length, 0)
           assert.strictEqual(b.getNeighboursIds().length, 0)
-          resolve()
+        }).catch(e => {
+          reject(e)
         })
-        assert.strictEqual(a.getNeighboursIds().length, 0)
-        // assert.strictEqual(b.getNeighboursIds().length, 1)
-        // now we have proper disconnection on both sides, because it's not a crash.
-        assert.strictEqual(b.getNeighboursIds().length, 0)
-        resolve()
-      }).catch(reject)
+      })
     })
   })
 })

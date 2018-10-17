@@ -18,17 +18,21 @@ describe('[Neighborhood] Offline connection', function () {
     })
     await a.connect(b)
     assert.strictEqual(a.getNeighboursIds().length, 1)
-    assert.strictEqual(b.getNeighboursIds().length, 1)
+    assert.strictEqual(b.getNeighboursIds().length, 0)
     return new Promise((resolve, reject) => {
       a.send(b.id, 'miaou').then(() => {
         console.log('[test] message sent.')
       }).catch(e => {
         reject(e)
       })
+      a.on('receive', (id, message) => {
+        assert.strictEqual(message, 'reply')
+        resolve()
+      })
       b.on('receive', (id, data) => {
         console.log('[test] receive: ', id, data)
         assert.strictEqual(data, 'miaou')
-        resolve()
+        b.send(a.id, 'reply')
       })
     })
   })

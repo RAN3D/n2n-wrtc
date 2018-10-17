@@ -38,18 +38,22 @@ describe('[Neighborhood] Online connection', function () {
     assert.strictEqual(neigh, null)
     const neigh2 = await b.connect()
     assert.strictEqual(neigh2, a.id)
-    assert.strictEqual(a.getNeighboursIds().length, 1)
-    assert.strictEqual(b.getNeighboursIds().length, 1)
+    assert.strictEqual(a.getNeighboursIds().length, 0) // inview 0
+    assert.strictEqual(b.getNeighboursIds().length, 1) // outview 1
     return new Promise((resolve, reject) => {
       a.send(b.id, 'miaou').then(() => {
         console.log('[test] message sent.')
       }).catch(e => {
         reject(e)
       })
+      a.on('receive', (id, message) => {
+        assert.strictEqual(message, 'reply')
+        resolve()
+      })
       b.on('receive', (id, data) => {
         console.log('[test] receive: ', id, data)
         assert.strictEqual(data, 'miaou')
-        resolve()
+        b.send(a.id, 'reply')
       })
     })
   })
