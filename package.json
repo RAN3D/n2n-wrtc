@@ -20,7 +20,7 @@
     "doc:dev": "docma -c configs/docma-local.json",
     "doc:serve": "docma serve ./docs",
     "mocha": "mocha tests/**/*-test.js --exit",
-    "all": "npm run build:debug && npm run build:prod && npm run doc:build"
+    "all": "npm run build:debug && npm run build:prod && npm run doc:build && npm test"
   },
   "repository": {
     "type": "git",
