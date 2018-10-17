@@ -8,10 +8,10 @@ const a = new n2n.N2N({ // eslint-disable-line
 g.graph.addNode({
   'id': a.id,
   'firstLabel': a.id,
-  'label': a.id
-  // 'x': 0,
-  // 'y': 0,
-  // 'size': 3
+  'label': a.id,
+  'x': 0,
+  'y': 0,
+  'size': 3
 })
 const b = new n2n.N2N({ // eslint-disable-line
   socket: {
@@ -21,19 +21,19 @@ const b = new n2n.N2N({ // eslint-disable-line
 g.graph.addNode({
   'id': b.id,
   'firstLabel': b.id,
-  'label': b.id
-  // 'x': 1,
-  // 'y': 0,
-  // 'size': 3
+  'label': b.id,
+  'x': 1,
+  'y': 0,
+  'size': 3
 })
-a.on('close', (id) => {
-  console.log('a closes a con: ', id)
+a.on('close', (...args) => {
+  console.log('a closes a con: ', ...args)
 })
-b.on('close', (id) => {
-  console.log('b closes a con: ', id)
+b.on('close', (...args) => {
+  console.log('b closes a con: ', ...args)
 })
-a.on('connect', (id) => {
-  console.log('a opens a con: ', id)
+a.on('connect', (id, outview) => {
+  console.log('a opens a con: ', id, outview)
   if (!g.graph.edges(a.id + id)) {
     g.graph.addEdge({
       'id': a.id + id,
@@ -43,8 +43,8 @@ a.on('connect', (id) => {
     g.refresh()
   }
 })
-b.on('connect', (id) => {
-  console.log('b opens a con: ', id)
+b.on('connect', (id, outview) => {
+  console.log('b opens a con: ', id, outview)
   if (!g.graph.edges(b.id + id)) {
     g.graph.addEdge({
       'id': b.id + id,
@@ -60,7 +60,7 @@ async function connection () {
   await a.connect() // connected, becasue he is alone
   await b.connect() // B => A
   await a.connect() // A => B: 1:1 1:1
-  return a.connect()
+  await a.connect()
 }
 
 connection().then(() => {

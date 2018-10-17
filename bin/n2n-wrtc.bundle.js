@@ -105,7 +105,6 @@ return /******/ (function(modules) { // webpackBootstrap
 
 module.exports = {
   n2n: __webpack_require__(/*! ./n2n */ "./lib/api/n2n.js"),
-  neighborhood: __webpack_require__(/*! ./neighborhood */ "./lib/api/neighborhood.js"),
   socket: __webpack_require__(/*! ./socket */ "./lib/api/socket.js"),
   signaling: __webpack_require__(/*! ./signaling */ "./lib/api/signaling.js")
 }
@@ -177,70 +176,6 @@ class AbstractN2N extends EventEmitter {
 }
 
 module.exports = AbstractN2N
-
-
-/***/ }),
-
-/***/ "./lib/api/neighborhood.js":
-/*!*********************************!*\
-  !*** ./lib/api/neighborhood.js ***!
-  \*********************************/
-/*! no static exports found */
-/***/ (function(module, exports, __webpack_require__) {
-
-const errors = __webpack_require__(/*! ../errors */ "./lib/errors/index.js")
-const EventEmitter = __webpack_require__(/*! events */ "./node_modules/events/events.js")
-
-class Neighborhood extends EventEmitter {
-  constructor (options) {
-    super()
-    this._debug = (__webpack_require__(/*! debug */ "./node_modules/debug/src/browser.js"))('n2n:neighborhood')
-    this.options = options
-    this.livingInview = new Map()
-    this.livingOutview = new Map()
-  }
-
-  receiveData (id, data) {
-    this.emit('receive', id, data)
-  }
-
-  async connect (options) {
-    return Promise.reject(errors.nyi())
-  }
-
-  async send (peerId, message) {
-    return Promise.reject(errors.nyi())
-  }
-
-  async disconnect (options) {
-    return Promise.reject(errors.nyi())
-  }
-
-  getNeighbours () {
-    return this.getNeighboursOutview()
-  }
-
-  getNeighboursIds () {
-    return this.getNeighboursOutview().map(p => p.id)
-  }
-
-  getNeighboursOutview () {
-    const res = []
-    this.livingOutview.forEach((peer, id) => {
-      if (peer.occurences >= 1) res.push({ peer, id })
-    })
-    return res
-  }
-  getNeighboursInview () {
-    const res = []
-    this.livingInview.forEach((peer, id) => {
-      if (peer.occurences >= 1) res.push({ peer, id })
-    })
-    return res
-  }
-}
-
-module.exports = Neighborhood
 
 
 /***/ }),
@@ -549,7 +484,8 @@ const events = {
     EMIT_OFFER: 'signaling-eo'
   },
   data: {
-    OCC_INC: 'o:i' // when we have to increase the occurence
+    OCC_INC: 'o:i', // when we have to increase the occurence on the inview
+    OCC_DEC: 'o:d' // when we have to decrease the occurence on the inview
   }
 }
 
@@ -611,8 +547,8 @@ class N2N extends AbstractN2N {
     this.view.on('receive', (...args) => {
       this.emit('receive', ...args)
     })
-    this.view.on('connect', id => {
-      this.emit('connect', id)
+    this.view.on('connect', (id, outview) => {
+      this.emit('connect', id, outview)
     })
     this.view.on('close', id => {
       this.emit('close', id)
@@ -678,7 +614,6 @@ module.exports = __webpack_require__(/*! ./neighborhood */ "./lib/neighborhood/n
 /*! no static exports found */
 /***/ (function(module, exports, __webpack_require__) {
 
-const NeighborhoodAPI = __webpack_require__(/*! ../api */ "./lib/api/index.js").neighborhood
 const short = __webpack_require__(/*! short-uuid */ "./node_modules/short-uuid/index.js")
 const translator = short()
 const lmerge = __webpack_require__(/*! lodash.merge */ "./node_modules/lodash.merge/index.js")
@@ -686,6 +621,7 @@ const OfflineSignaling = __webpack_require__(/*! ../signaling */ "./lib/signalin
 const OnlineSignaling = __webpack_require__(/*! ../signaling */ "./lib/signaling/index.js").online
 const events = __webpack_require__(/*! ../events */ "./lib/events.js")
 const errors = __webpack_require__(/*! ../errors */ "./lib/errors/index.js")
+const EventEmitter = __webpack_require__(/*! events */ "./node_modules/events/events.js")
 
 /**
  * @class
@@ -693,7 +629,7 @@ const errors = __webpack_require__(/*! ../errors */ "./lib/errors/index.js")
  * it allows offline connection and online connections
  * @extends Neighborhood
  */
-class Neighborhood extends NeighborhoodAPI {
+class Neighborhood extends EventEmitter {
   constructor (options) {
     const id = translator.new()
     options = lmerge({
@@ -707,7 +643,11 @@ class Neighborhood extends NeighborhoodAPI {
       },
       signaling: lmerge({ room: 'default', id }, __webpack_require__(/*! ../signaling/server/config.json */ "./lib/signaling/server/config.json"))
     }, options)
-    super(options)
+    super()
+    this._debug = (__webpack_require__(/*! debug */ "./node_modules/debug/src/browser.js"))('n2n:neighborhood')
+    this.options = options
+    this.livingInview = new Map()
+    this.livingOutview = new Map()
     this._debug('Options set: ', this.options)
     this.id = this.options.neighborhood.id
     this.signaling = {
@@ -786,24 +726,34 @@ class Neighborhood extends NeighborhoodAPI {
     })
   }
 
+  /**
+   * Connect us to a neighbor using a signaling service, if neighbor is null we use an online signaling service to connect the neighbor to an already existing network. If we are alone, meaning that the peer id we receive using the signaling service is null, we are automatically connected. If the neighbor is an instance of Neighborhood, we directly connect them through an offline signaling service.
+   * @param  {[type]}  neighbor                          Neighborhood instance we want to connect to directly
+   * @param  {[type]}  [signaling=this.signaling.online] The online service we want to use. Dont forget to active the listener to receive incoming messages
+   * @return {Promise} This method is resolved when the connection is successfully done, otherwise rejected
+   */
   async connect (neighbor, signaling = this.signaling.online) {
     // get peers id and check if we already have the neighbor connection
     // yes? => increment occurences
     // no? => create it
     if (neighbor) {
       if (this.livingOutview.has(neighbor.id)) {
-        console.log('direct with logical link')
         return this.increaseOccurences(neighbor.id).then(() => {
-          return neighbor.id
+          // we only send the message in case when the connection is already here
+          return this.send(neighbor.id, {
+            type: events.data.OCC_INC,
+            id: this.id
+          }).then(() => {
+            return neighbor.id
+          })
         })
       } else {
-        console.log('direct with physical link')
         signaling = this.signaling.offline
         return new Promise(async (resolve, reject) => {
           await signaling.connect()
           const socket = this.createNewSocket(this.options.socket, neighbor.id, true)
           socket.on('error', (error) => {
-            this._manageError(error, neighbor.id, reject)
+            this._manageError(error, neighbor.id, true, reject)
           })
           socket.on(events.socket.EMIT_OFFER, (offer) => {
             neighbor.signaling.offline.receiveOffer({
@@ -836,14 +786,21 @@ class Neighborhood extends NeighborhoodAPI {
           if (neighborId) {
             if (this.livingOutview.has(neighborId)) {
               this.increaseOccurences(neighborId).then(() => {
-                resolve(neighborId)
+                this.send(neighborId, {
+                  type: events.data.OCC_INC,
+                  id: this.id
+                }).then(() => {
+                  resolve(neighborId)
+                }).catch(e => {
+                  reject(e)
+                })
               }).catch(e => {
                 reject(e)
               })
             } else {
               const socket = this.createNewSocket(this.options.socket, neighborId, true)
               socket.on('error', (error) => {
-                this._manageError(error, neighborId, reject)
+                this._manageError(error, neighborId, true, reject)
               })
               socket.on(events.socket.EMIT_OFFER, (offer) => {
                 const off = {
@@ -870,31 +827,97 @@ class Neighborhood extends NeighborhoodAPI {
     }
   }
 
-  increaseOccurences (peerId) {
-    console.log(this.livingOutview, this.livingInview)
-    return new Promise((resolve, reject) => {
-      if (!this.livingOutview.has(peerId)) {
-        reject(errors.peerNotFound(peerId))
-      } else {
-        this.send(peerId, {
-          type: events.data.OCC_INC,
-          id: this.id
-        })
-        this.increaseOccOutview(peerId)
-        this.emit('connect', peerId)
-        resolve()
-      }
-    })
+  /**
+   * @description Increase the occurence of the socket in the outview and send a message to the peer connected with to increase its inview
+   * @param  {[type]} peerId [description]
+   * @return {[type]}        [description]
+   */
+  async increaseOccurences (peerId) {
+    if (!this.livingOutview.has(peerId)) {
+      throw errors.peerNotFound(peerId)
+    } else {
+      this.increaseOccOutview(peerId)
+    }
   }
-
+  /**
+   * @description Increase the occurence of the socket specified by its id in the inview
+   * @param  {String} peerId peer id
+   * @return {void}
+   */
   increaseOccInview (peerId) {
     this.livingInview.get(peerId).occurences++
+    this._signalConnect(peerId, false)
   }
-
+  /**
+   * @description Increase the occurence of the socket specified by its id in the outview
+   * @param  {String} peerId peer id
+   * @return {void}
+   */
   increaseOccOutview (peerId) {
-    this.livingOutview.get(peerId).occurences++
+    if (!this.livingOutview.has(peerId)) {
+      console.log(new Error('[decreaseOccOutview] This error should never happen. Please report.'))
+    } else {
+      this.livingOutview.get(peerId).occurences++
+      this._signalConnect(peerId, true)
+    }
+  }
+  /**
+   * @description Decrease the local inview.
+   * Also emit a disconnect signal after decreasing the inview
+   * @param  {String}  peerId          id of the peer that we want to decrease the inview
+   * @param  {Boolean} [outview=false] if outview or not
+   * @return {void}
+   */
+  decreaseOccInview (peerId, outview = false) {
+    if (!this.livingInview.has(peerId)) {
+      console.log(new Error('[decreaseOccInview] This error should never happen. Please report.'))
+    } else {
+      this.livingInview.get(peerId).occurences--
+      this._signalDisconnect(peerId, outview)
+    }
   }
 
+  /**
+   * @description Decrease the local outview of the conenction specified by the peer id
+   * Also send a message to the remote peer to decrease its according inview for the socket connected with.
+   * @param  {String}  peerId peer id of the connection we want to decrease the occurence
+   * @return {Promise} Promise resolved when the dec is done or the real disconnection of the physical link
+   */
+  async decreaseOccOutview (peerId) {
+    if (!this.livingOutview.has(peerId)) {
+      throw errors.peerNotFound(peerId)
+    } else {
+      const p = this.livingOutview.get(peerId)
+      if (p.occurences === 0) {
+        // try to remove the connection
+        p.socket.disconnect()
+        throw new Error('The peer cant be at occurences=0 in this phase, please report this error.')
+      } else {
+        // now decrease
+        this.send(peerId, {
+          type: events.data.OCC_DEC,
+          id: this.id
+        }).then(() => {
+          this.livingOutview.get(peerId).occurences--
+          this._signalDisconnect(peerId, true)
+          if (p.occurences === 0) {
+            return p.socket.disconnect()
+          }
+        }).catch(e => {
+          return Promise.reject(e)
+        })
+      }
+    }
+  }
+
+  /**
+   * @description Send a message to the peer specified.
+   * Firstly we try to send in the outview, then we try to send the message in the inview.
+   * Then we throw an error if the peer is not found in the outview nor the inview.
+   * @param  {String}  peerId  peer id we want to send the message to
+   * @param  {Object}  message Message to send
+   * @return {Promise} Promise resolved when the message is sent, reject if the peer is not found or an error is return from the send method of the socket used.
+   */
   async send (peerId, message) {
     if (this.livingOutview.has(peerId)) {
       return this.livingOutview.get(peerId).socket.send(this._serialize(message))
@@ -906,62 +929,31 @@ class Neighborhood extends NeighborhoodAPI {
   }
 
   /**
-   * Disconnect all or one arc. (todo: minize the connection overhead)
+   * @description Disconnect all or one arc. (todo: minize the connection overhead)
    * @param  {String}  userId [description]
    * @return {Promise}        [description]
    */
   async disconnect (userId) {
     if (userId) {
-      if (!this.living.has(userId)) {
+      if (!this.livingOutview.has(userId)) {
         throw errors.peerNotFound(userId)
       } else {
-        const p = this.living.get(userId)
-        // firstly check outview, if 0 or 1 disconnect, otherwise decrease
-        if ((p.outview === 1 && p.inview === 0) || (p.outview === 0 && p.inview === 1)) {
-          return new Promise((resolve, reject) => {
-            const jobId = translator.new()
-            this.send(userId, {
-              type: events.data.DISCONNECT_DIRECT,
-              id: this.id,
-              jobId
-            }).catch(reject)
-            const timeout = setTimeout(() => {
-              this.removeAllListeners(jobId)
-              reject(new Error('disconnection timed out. ' + userId))
-            }, this.options.neighborhood.timeoutDisconnect)
-            this.on(jobId, () => {
-              this.living.get(userId).socket.disconnect().then(() => {
-                clearTimeout(timeout)
-                resolve()
-              }).catch(e => {
-                clearTimeout(timeout)
-                reject(e)
-              })
-            })
-          })
+        const p = this.livingOutview.get(userId)
+        if (p.occurences === 0) {
+          throw new Error('No connection found. Maybe the peer is being disconnected.')
+        }
+        // check if occurences - lock is > 0
+        const available = (p.occurences - p.lock) > 0
+        if (available) {
+          return this.decreaseOccOutview(userId)
         } else {
-          return new Promise((resolve, reject) => {
-            // decrease, send message to decrease the inview at the other side and signal when answer
-            // now send the mesage and wait for the answer
-            const jobId = translator.new()
-            this.send(userId, {
-              type: events.data.DISCONNECT_REQUEST,
-              id: this.id,
-              jobId
-            })
-            // TODO: timeout
-            this.on(jobId, () => {
-              this.living.get(userId).outview--
-              this._signalDisconnect(userId)
-              resolve()
-            })
-          })
+          throw new Error('Peer not available, because connections are locked.')
         }
       }
     } else {
       const ids = []
-      this.living.forEach((v, k) => {
-        for (let i = 0; i < v.inview + v.outview; ++i) {
+      this.livingOutview.forEach((v, k) => {
+        for (let i = 0; i < (v.occurences - v.lock); ++i) {
           ids.push(k)
         }
       })
@@ -978,78 +970,203 @@ class Neighborhood extends NeighborhoodAPI {
     }
   }
 
+  /**
+   * Simulate a crash by disconnecting all sockets from inview/outview
+   * @return {void}
+   */
+  crash () {
+    this.livingOutview.forEach(p => {
+      p.socket.disconnect()
+    })
+    this.livingInview.forEach(p => {
+      p.socket.disconnect()
+    })
+  }
+
+  /**
+   * @description Create a new Socket and initialize callbacks (message/error/close)
+   * @param  {Object}  options         options to pass to the newly created socket.
+   * @param  {String}  id              id of our new neighbor
+   * @param  {Boolean} [outview=false] if it is an inview or outview sockt
+   * @return {Socket}
+   */
   createNewSocket (options, id, outview = false) {
     const newSocket = new this.options.neighborhood.SocketClass(options)
     this._debug('[%s] new socket created: %s', this.id, newSocket.socketId)
+    newSocket.once('connect', () => {
+      if (!outview) {
+        this.increaseOccInview(id, outview)
+      }
+    })
     newSocket.on('data', (data) => {
       this.__receive(id, data)
     })
-    newSocket.on('close', () => {
-      this._manageClose(id)
+    newSocket.once('close', () => {
+      this._manageClose(id, outview)
     })
-    newSocket.on('error', error => {
-      this._manageError(error, id)
+    newSocket.once('error', error => {
+      this._manageError(error, id, outview)
     })
     if (outview) {
       this.livingOutview.set(id, {
         socket: newSocket,
-        occurences: 0
+        occurences: 0,
+        lock: 0
       })
     } else {
       this.livingInview.set(id, {
         socket: newSocket,
-        occurences: 0
+        occurences: 0,
+        lock: 0
       })
     }
     return newSocket
   }
 
-  _manageError (error, peerId, reject) {
-    console.error('An error occured, direct deconnection of the socket:  ', error)
-    if (this.living.has(peerId)) {
-      const p = this.living.get(peerId)
-      for (let i = 0; i < (p.inview + p.outview); ++i) {
-        this._signalDisconnect(peerId)
-      }
+  /**
+   * @description On error received, disconnect the (in/out)view socket. Reject with the error provided if the reject parameter is passed.
+   * @param  {Error}  error           The error received
+   * @param  {String}  peerId          Id of the peer that is errored
+   * @param  {Boolean} [outview=false] (In/out)view
+   * @param  {function}  reject          callback reject (used in the connection function)
+   * @return {void}
+   */
+  _manageError (error, peerId, outview = false, reject) {
+    console.log('Error of the socket: (%s) (outview:' + outview + ') this is just a log. The error is catched.', peerId, error)
+    if (outview && this.livingOutview.has(peerId)) {
+      this.livingOutview.get(peerId).socket.disconnect()
+    } else if (!outview && this.livingInview.has(peerId)) {
+      this.livingInview.get(peerId).socket.disconnect()
     }
     if (reject) reject(error)
   }
 
-  _manageClose (peerId) {
-    if (this.living.has(peerId)) {
-      const p = this.living.get(peerId)
-      this.living.delete(peerId)
-      for (let i = 0; i < (p.inview + p.outview); ++i) {
-        this._signalDisconnect(peerId)
+  /**
+   * @description On connection closed, signal if its an inview or an outview arc. Remove the socket from its (in/out)view.
+   * @param  {String}  peerId          id of the peer
+   * @param  {Boolean} [outview=false] is in the outview or not
+   * @return {void}
+   */
+  _manageClose (peerId, outview = false) {
+    if (outview && this.livingOutview.has(peerId)) {
+      const p = this.livingOutview.get(peerId)
+      this.livingOutview.delete(peerId)
+      for (let i = 0; i < (p.occurences); ++i) {
+        this._signalDisconnect(peerId, outview)
+      }
+    } else if (!outview && this.livingInview.has(peerId)) {
+      const p = this.livingInview.get(peerId)
+      this.livingInview.delete(peerId)
+      for (let i = 0; i < (p.occurences); ++i) {
+        this._signalDisconnect(peerId, outview)
       }
     } else {
       console.log('[socket does not exist] Connection closed', peerId)
     }
   }
 
+  /**
+   * @description Serialize the data before sending it
+   * @param  {Object} data data not serialized
+   * @return {Object} Serialized data
+   */
   _serialize (data) {
     return JSON.stringify(data)
   }
-
+  /**
+   * @description Deserialize data when received
+   * @param  {string} data data received
+   * @return {Object} Data parsed
+   */
   _deserialize (data) {
     return JSON.parse(data)
   }
-
-  _signalConnect (id) {
-    this.emit('connect', id)
+  /**
+   * @description Signal when an arc is opened, if its an inview arc, increase the occurence
+   * Do not increment the occurence in the outview if it is an outview arc because it is manually controlled during the connection
+   * @param  {string} id Id of the peer of the arc
+   * @param  {Boolean} outview Is an inview or an outview arc
+   * @return {void}
+   */
+  _signalConnect (id, outview) {
+    this.emit('connect', id, outview)
   }
-  _signalDisconnect (id) {
-    this.emit('close', id)
+  /**
+   * @description Signal when an arc is closed
+   * @param  {string} id Id of the peer of the arc
+   * @param  {Boolean} outview Is an inview or an outview arc
+   * @return {void}
+   */
+  _signalDisconnect (id, outview) {
+    this.emit('close', id, outview)
   }
 
+  /**
+   * @description Callback called when we receive a message from a socket
+   * @param  {String} id   id of the peer
+   * @param  {Object} data data received
+   * @return {void}
+   */
   __receive (id, data) {
     data = this._deserialize(data)
-    console.log('receive: ', id, data)
-    if (data && data.type && data.id && data.type === events.data.OCC_INC) {
+    console.log(id, data)
+    if (data && data.type && data.id && data.type === events.data.OCC_DEC) {
+      this.decreaseOccInview(data.id)
+    } else if (data && data.type && data.id && data.type === events.data.OCC_INC) {
       this.increaseOccInview(data.id)
     } else {
-      this.receiveData(id, data)
+      this.emit('receive', id, data)
     }
+  }
+
+  /**
+   * @description Get all reachable neighbours including socket, occurences, lock and ids
+   * @return {[type]} [description]
+   */
+  getNeighbours () {
+    return this.getNeighboursOutview()
+  }
+
+  /**
+   * @description Return all ids of reachable peers (outview)
+   * @return {Array<String>}
+   */
+  getNeighboursIds () {
+    return this.getNeighboursOutview().map(p => p.id)
+  }
+
+  /**
+   * @description Get the list of all outviews sockets including occurences and lock and the peer id connected with.
+   * Contrary to your inview, Occurences and lock are consistent because you have the control on your outview
+   * @return {Array<Object>} Array of object [{peer: {socket, occurences, lock}, id}]
+   */
+  getNeighboursOutview () {
+    const res = []
+    this.livingOutview.forEach((peer, id) => {
+      if ((peer.occurences - peer.lock) > 0) res.push({ peer, id })
+    })
+    return res
+  }
+
+  /**
+   * @description Get the list of all inviews sockets including occurences and the peer id connected with.
+   * (Warning) occurences and lock are inconsistent because you have no control on your inview
+   * @return {Array<Object>} Array of object [{peer: {socket, occurences, lock}, id}]
+   */
+  getNeighboursInview () {
+    const res = []
+    this.livingInview.forEach((peer, id) => {
+      res.push({ peer, id })
+    })
+    return res
+  }
+
+  /**
+   * @description Return a list of arcs inview/outview for the peer in an array of object {source: <string>, dest: <string>, outview: <boolean>}
+   * @return {Array<Object>} [{source: <string>, dest: <string>, outview: <boolean>}, ...]
+   */
+  getArcs () {
+    throw errors.nyi()
   }
 }
 
@@ -1113,7 +1230,7 @@ const translator = short()
 
 class OnlineSignaling extends SignalingAPI {
   /**
-   * @description [**To Impelment**] Connect the signaling service
+   * @description Connect the signaling service to a Socket.io signaling server (see the server in ./server)
    * @param  {Object}  options options for the connection if needed
    * @return {Promise}            Promise resolved when the connection succeeded
    */
@@ -1134,12 +1251,26 @@ class OnlineSignaling extends SignalingAPI {
         resolve()
       })
       socket.once('connect_error', (error) => {
+        socket.close()
+        console.error('Signaling server connect_error: ', error)
         socket.off('connect')
+        socket.off('connect_failed')
+        socket.off('connect_timeout')
+        reject(error)
+      })
+      socket.once('connect_failed', (error) => {
+        socket.close()
+        console.error('Signaling server connect_failed: ', error)
+        socket.off('connect')
+        socket.off('connect_failed')
         socket.off('connect_timeout')
         reject(error)
       })
       socket.once('connect_timeout', (timeout) => {
+        socket.close()
+        console.error('Signaling server connect_timeout: ', timeout)
         socket.off('connect')
+        socket.off('connect_failed')
         socket.off('connect_error')
         reject(timeout)
       })
@@ -1153,6 +1284,26 @@ class OnlineSignaling extends SignalingAPI {
     })
     socket.on('offer', (offer) => {
       this.emit(events.signaling.RECEIVE_OFFER, offer)
+    })
+    socket.on('error', (error) => {
+      console.error('SS error: ', error)
+    })
+    socket.on('disconnect', (error) => {
+      console.log('SS disconnection: ', error)
+    })
+    socket.on('reconnect_error', (error) => {
+      socket.close()
+      console.error('SS disconnection: ', error)
+    })
+    socket.on('reconnect_failed', (error) => {
+      socket.close()
+      console.error('SS disconenction: ', error)
+    })
+    socket.on('reconnect_attempt', () => {
+      console.log('SS attempting a reconnection')
+    })
+    socket.on('reconnect', (number) => {
+      console.log('SS successfull reconnection when attempting a reconnection: ', number)
     })
   }
 
@@ -1242,7 +1393,6 @@ class SimplePeerWrapper extends Socket {
     }, options)
     super(options)
     this.socketId = translator.new()
-
     this.statistics = {
       offerSent: 0,
       offerReceived: 0
@@ -1255,14 +1405,15 @@ class SimplePeerWrapper extends Socket {
     this._create()
     this.__socket.signal(offer)
   }
-  _create () {
+  _create (options = this.options) {
+    options.initiator = false
     if (!this.__socket) {
       if (this.options.moc) {
-        this.__socket = new this.options.MocClass(lmerge({ initiator: false }, this.options))
+        this.__socket = new this.options.MocClass(options)
       } else {
-        this.__socket = new SimplePeer(lmerge({ initiator: false }, this.options))
+        this.__socket = new SimplePeer(options)
       }
-      this._debug('Simple-peer Socket options set: ', this.options)
+      this._debug('Simple-peer Socket options set: ', options)
       this.__socket.on('connect', () => {
         this.emit('connect')
       })
@@ -1317,6 +1468,7 @@ class SimplePeerWrapper extends Socket {
   }
 
   _manageErrors (...args) {
+    this._debug('Error on the socket: ', ...args)
     this.emit('error', ...args)
   }
 
@@ -1333,7 +1485,6 @@ class SimplePeerWrapper extends Socket {
 
   async _disconnect () {
     try {
-      this._create()
       this.__socket.destroy()
       return Promise.resolve()
     } catch (e) {
