@@ -119,7 +119,7 @@ describe('N2N connection', function () {
     assert.strictEqual(a.view.livingOutview.get(b.id).occurences, 6)
     assert.strictEqual(a.view.livingOutview.get(b.id).lock, 0)
   })
-  it('offline connection+disconnection, need to be 0 in both sides', async () => {
+  it('offline connection+disconnection a need to be at 0/1 and b at 1/0 (outview/inview)', async () => {
     const a = new N2N({
       socket: {
         trickle: true,
@@ -168,7 +168,7 @@ describe('N2N connection', function () {
     assert.strictEqual(b.view.livingOutview.size, 1)
   })
 
-  it('offline connection+disconnection, need to be 0 in both sides', async () => {
+  it('offline connection+disconnection, a: 0/0 b: 0/0', async () => {
     const a = new N2N({
       socket: {
         trickle: true,
@@ -222,5 +222,95 @@ describe('N2N connection', function () {
     assert.strictEqual(a.view.livingOutview.size, 0)
     assert.strictEqual(b.view.livingInview.size, 0)
     assert.strictEqual(b.view.livingOutview.size, 0)
+  })
+  it('offline connection+disconnection, bridge must work in the perfect world', async () => {
+    const a = new N2N({
+      socket: {
+        trickle: true,
+        moc: true
+      }
+    })
+    const b = new N2N({
+      socket: {
+        trickle: true,
+        moc: true
+      }
+    })
+    const c = new N2N({
+      socket: {
+        trickle: true,
+        moc: true
+      }
+    })
+    await a.connect(b)
+    await utils.timeout(500)
+    assert.strictEqual(a.view.livingInview.size, 0)
+    assert.strictEqual(a.view.livingOutview.size, 1)
+    assert.strictEqual(b.view.livingInview.size, 1)
+    assert.strictEqual(b.view.livingOutview.size, 0)
+    await b.connect(c)
+    await utils.timeout(500)
+    assert.strictEqual(b.view.livingInview.size, 1)
+    assert.strictEqual(b.view.livingOutview.size, 1)
+    assert.strictEqual(c.view.livingInview.size, 1)
+    assert.strictEqual(c.view.livingOutview.size, 0)
+    await b.connectBridge(a.id, c.id)
+    await utils.timeout(500)
+    assert.strictEqual(a.view.livingInview.size, 0)
+    assert.strictEqual(a.view.livingOutview.size, 2)
+    assert.strictEqual(b.view.livingInview.size, 1)
+    assert.strictEqual(b.view.livingOutview.size, 1)
+    assert.strictEqual(c.view.livingInview.size, 2)
+    assert.strictEqual(c.view.livingOutview.size, 0)
+  })
+  it('offline connection+disconnection, bridge cannot work with a conenction locked on dest', async () => {
+    const a = new N2N({
+      socket: {
+        trickle: true,
+        moc: true
+      }
+    })
+    const b = new N2N({
+      socket: {
+        trickle: true,
+        moc: true
+      }
+    })
+    const c = new N2N({
+      socket: {
+        trickle: true,
+        moc: true
+      }
+    })
+    await a.connect(b)
+    assert.strictEqual(a.view.livingInview.size, 0)
+    assert.strictEqual(a.view.livingOutview.size, 1)
+    assert.strictEqual(b.view.livingInview.size, 1)
+    assert.strictEqual(b.view.livingOutview.size, 0)
+    await b.connect(c)
+    assert.strictEqual(b.view.livingInview.size, 1)
+    assert.strictEqual(b.view.livingOutview.size, 1)
+    assert.strictEqual(c.view.livingInview.size, 1)
+    assert.strictEqual(c.view.livingOutview.size, 0)
+    b.view.lock(c.id)
+    assert.strictEqual(b.view.livingInview.size, 1)
+    assert.strictEqual(b.view.livingOutview.size, 1)
+    assert.strictEqual(c.view.livingInview.size, 1)
+    assert.strictEqual(c.view.livingOutview.size, 0)
+    return new Promise((resolve, reject) => {
+      b.connectBridge(a.id, c.id).then(() => {
+        reject(new Error('need to crash'))
+      }).catch(e => {
+        setTimeout(() => {
+          assert.strictEqual(a.view.livingInview.size, 0)
+          assert.strictEqual(a.view.livingOutview.size, 1)
+          assert.strictEqual(b.view.livingInview.size, 1)
+          assert.strictEqual(b.view.livingOutview.size, 1)
+          assert.strictEqual(c.view.livingInview.size, 1)
+          assert.strictEqual(c.view.livingOutview.size, 0)
+          resolve()
+        }, 1000)
+      })
+    })
   })
 }) // end describe

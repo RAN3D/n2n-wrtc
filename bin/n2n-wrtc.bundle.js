@@ -823,13 +823,12 @@ class N2N extends AbstractN2N {
           reject(new Error('timeout'))
         }, timeout)
         this.events.once(jobId, (msg) => {
+          console.log('finish bridge', msg)
+          this.view.unlock(dest)
+          clearTimeout(tout)
           if (msg.response) {
-            this.view.unlock(dest)
-            clearTimeout(tout)
             resolve()
           } else {
-            this.view.unlock(dest)
-            clearTimeout(tout)
             reject(new Error('bridge rejected.'))
           }
         })
@@ -872,10 +871,12 @@ class N2N extends AbstractN2N {
           this.send(dest, {
             type: events.neighborhood.OCC_INC,
             id: this.id
-          }).then(() => {
-            resolve()
           }).catch(e => {
+            this.view.unlock(forward)
             reject(e)
+          }).then(() => {
+            this.view.unlock(forward)
+            resolve()
           })
         } else {
           // first lock the connection with forward
@@ -907,9 +908,7 @@ class N2N extends AbstractN2N {
           })
         }
       }).then(() => {
-        console.log('resolve')
         this.view.increaseOccurences(dest, true).then(() => {
-          console.log('increase true.')
           this.send(forward, {
             type: events.n2n.RESPONSE,
             response: true,
@@ -919,6 +918,9 @@ class N2N extends AbstractN2N {
           }).catch(e => {
             this.view.unlock(forward)
           })
+        }).catch(e => {
+          this.view.unlock(forward)
+          console.error(e)
         })
       }).catch(e => {
         console.log('increase false.', e)
@@ -1306,7 +1308,7 @@ class Neighborhood extends EventEmitter {
    * @return {Boolean} False if not unlocked, true when unlocked.
    */
   unlock (peerId) {
-    if (!this.livingOutview.has(peerId)) {
+    if (!this.livingOutview.exist(peerId)) {
       return false
     } else {
       const p = this.livingOutview.get(peerId)

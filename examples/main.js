@@ -3,21 +3,23 @@ let g = new sigma('network') // eslint-disable-line
 const moc = false
 localStorage.debug = 'n2n:direct'
 
-const a = createNode(0, 0)
-const b = createNode(1, 0)
-const c = createNode(0.5, 1)
+const a = createNode('a', 0, 0)
+const b = createNode('b', 1, 0)
+const c = createNode('c', 0.5, 1)
 
 g.refresh()
 
 async function connection () {
   await a.connect(b) // connected, becasue he is alone
   await b.connect(c) // connected, becasue he is alone
-  // b.view.lock(c.id)
   await b.connectBridge(a.id, c.id)
 }
 
-function createNode (x, y) {
+function createNode (name, x, y) {
   const node = new n2n.N2N({ // eslint-disable-line
+    n2n: {
+      id: name
+    },
     socket: {
       trickle: true,
       moc
@@ -50,11 +52,6 @@ function createNode (x, y) {
   })
   return node
 }
-
-function listeners (s) {
-
-}
-
 connection().then(() => {
   neigh()
 })
