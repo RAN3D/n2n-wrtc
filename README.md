@@ -91,9 +91,9 @@ peer-sampling protocols.
 - [x] **Offline signaling** allowing to do `a.connect(b)`
 - [x] **Signaling server** for online signaling `npm run signaling` or `require('n2n-wrtc/lib/signaling/server').server()`
 - [x] **Online signaling** allowing to do `a.connect()` using a signaling server
-- [x] **Get a list of all neighbours (not locked)** including outview/sockets `a.getNeighbours()` will return a Map containing every connections
-- [x] **Get a list of all neighbours (even if locked)** including outview/sockets `a.getAllNeighbours()` will return a Map containing every connections
-- [x] **Get a list of all neighbours ids (not locked)** (outview): `a.getNeighboursIds()`
+- [x] **Get a list of all neighbours (not locked)** `a.getNeighbours()`
+- [x] **Get a list of all neighbours (even if locked)** `a.getAllNeighbours(true)`
+- [x] **Get a list of all neighbours ids (locked/ not locked)** (outview): `a.getNeighboursIds([true/false])`
 - [x] **Get only inview ids**: `a.getNeighboursInview()`
 - [x] **Get only outview ids (not locked)**: `a.getNeighboursOutview()`
 - [x] **Send** a message over Unicast:  `a.send(b.id, 'meow');`
@@ -101,7 +101,10 @@ peer-sampling protocols.
 - [x] Create the internal signaling service:
   - Allow to forward offers from an inview neighbour to an outview neighbour
   - After connection new offers are transmitted by message (usefull for re-negociation)
-- [x] Create bridge connections allowing to do: `a.connectBridge(b.id, c.id)` if b and c are neighbours
+- [x] Create bridge connections allowing to do: `a.connectBridge(b.id, c.id)`
+  - if b and c are neighbours
+  - B need to be in your inview
+  - C need to be in your outview
 - [x] Create from -> to connections allowing to do: `a.connectFromUs(b.id)`
   - It means that it increments our outview and increment the inview of the neighbor
 - [x] Create a Direct signaling service

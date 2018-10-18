@@ -216,6 +216,7 @@ describe('N2N connection', function () {
     assert.strictEqual(b.view.livingInview.size, 0)
     assert.strictEqual(b.view.livingOutview.size, 1)
     await b.disconnect()
+    await utils.timeout(1000)
     assert.strictEqual(a.getNeighboursIds().length, 0)
     assert.strictEqual(b.getNeighboursIds().length, 0)
     assert.strictEqual(a.view.livingInview.size, 0)
