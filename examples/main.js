@@ -1,5 +1,16 @@
 console.log(n2n) // eslint-disable-line
-let g = new sigma('network') // eslint-disable-line
+let g = new sigma({ // eslint-disable-line
+  renderer: {
+    container: 'network',
+    type: 'canvas'
+  },
+  settings: Object.assign(sigma.settings, {
+    defaultEdgeType: 'curvedArrow',
+    minArrowSize: 10,
+    scalingMode: 'inside',
+    sideMargin: 0.5
+  }) // eslint-disable-line
+}) // eslint-disable-line
 const moc = false
 localStorage.debug = 'n2n:direct'
 
@@ -31,15 +42,16 @@ function createNode (name, x, y) {
     'label': node.id,
     'x': x,
     'y': y,
-    'size': 3
+    'size': 2,
+    color: randomColor()
   })
-  node.on('connect', (id, outview) => {
+  node.on('out', (id, outview) => {
     console.log('%s opens a con: ', node.id, id, outview)
     if (!g.graph.edges(node.id + id)) {
       g.graph.addEdge({
-        'id': node.id + id,
-        'source': node.id,
-        'target': id
+        id: node.id + id,
+        source: node.id,
+        target: id
       })
       g.refresh()
     }
@@ -63,3 +75,12 @@ function neigh () {
   console.log(a.getNeighbours(), b.getNeighbours(), c.getNeighbours())
   g.refresh()
 }
+
+function randomColor () {
+  const letters = '0123456789ABCDEF'
+  let color = '#'
+  for (let i = 0; i < 3; i++) {
+    color += letters[Math.floor(Math.random() * 16)]
+  }
+  return color
+};

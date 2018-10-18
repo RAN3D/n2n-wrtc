@@ -566,8 +566,13 @@ class N2N extends AbstractN2N {
     this.view.on('receive', (id, message) => {
       this._receive(id, message)
     })
-    this.view.on('connect', (id, outview) => {
+    this.view.on('in', (id, outview) => {
       this.emit('connect', id, outview)
+      this.emit('in', id)
+    })
+    this.view.on('out', (id, outview) => {
+      this.emit('connect', id, outview)
+      this.emit('out', id)
     })
     this.view.on('close', id => {
       this.emit('close', id)
@@ -967,28 +972,21 @@ class N2N extends AbstractN2N {
 
   /**
    * @description Get all reachable neighbours including socket, occurences, lock and ids
-   * Even if the connection is totally locked you can see it
+   * If the connection is totally locked you cant see it. Pass true as options if you want all neighbours even if connections are locked.
+   * @param {Boolean} [all=false] if true, return all neighbours even if they are locked
    * @return {Array<Object>} Array of object [{peer: {socket, occurences, lock}, id}]
    */
-  getAllNeighbours () {
-    return this.view.getAllNeighbours()
-  }
-
-  /**
-   * @description Get all reachable neighbours including socket, occurences, lock and ids
-   * If the connection is totally locked you cant see it.
-   * @return {Array<Object>} Array of object [{peer: {socket, occurences, lock}, id}]
-   */
-  getNeighbours () {
-    return this.view.getNeighbours()
+  getNeighbours (all = false) {
+    return this.view.getNeighbours(all)
   }
 
   /**
    * @description Return all ids of reachable peers (outview)
+   * @param {Boolean} [all=false] if true, return all neighbours ids even if they are locked
    * @return {Array<String>}
    */
-  getNeighboursIds () {
-    return this.view.getNeighboursIds()
+  getNeighboursIds (all = false) {
+    return this.view.getNeighboursIds(all)
   }
 
   /**
@@ -1597,7 +1595,11 @@ class Neighborhood extends EventEmitter {
    * @return {void}
    */
   _signalConnect (id, outview) {
-    this.emit('connect', id, outview)
+    if (outview) {
+      this.emit('out', id, outview)
+    } else {
+      this.emit('in', id, outview)
+    }
   }
   /**
    * @description Signal when an arc is closed
@@ -1629,10 +1631,15 @@ class Neighborhood extends EventEmitter {
   /**
    * @description Get all reachable neighbours including socket, occurences, lock and ids
    * If the connection is totally locked you cant see it.
+   * @param {Boolean} [all=false] if true, return all neighbours even if they are locked
    * @return {Array<Object>} Array of object [{peer: {socket, occurences, lock}, id}]
    */
-  getNeighbours () {
-    return this.getNeighboursOutview()
+  getNeighbours (all = false) {
+    if (all) {
+      return this.getAllNeighbours()
+    } else {
+      return this.getNeighboursOutview()
+    }
   }
   /**
    * @description Get all reachable neighbours including socket, occurences, lock and ids
@@ -1654,10 +1661,11 @@ class Neighborhood extends EventEmitter {
 
   /**
    * @description Return all ids of reachable peers (outview)
+   * @param {Boolean} [all=false] if true, return all neighbours even if they are locked
    * @return {Array<String>}
    */
-  getNeighboursIds () {
-    return this.getNeighboursOutview().map(p => p.id)
+  getNeighboursIds (all = false) {
+    return this.getNeighbours(all).map(p => p.id)
   }
 
   /**
@@ -1687,11 +1695,32 @@ class Neighborhood extends EventEmitter {
   }
 
   /**
-   * @description Return a list of arcs inview/outview for the peer in an array of object {source: <string>, dest: <string>, outview: <boolean>}
-   * @return {Array<Object>} [{source: <string>, dest: <string>, outview: <boolean>}, ...]
+   * @description Return a list of arcs inview/outview for the peer in an array of object {source: <string>, dest: <string>, outview: <boolean>} even if they are lock or not
+   * @return {ObjectArray<Object>} [{source: <string>, dest: <string>, outview: <boolean>}, ...]
    */
   getArcs () {
-    throw errors.nyi()
+    const res = []
+    this.livingInview.forEach((p, k) => {
+      console.log('i:', k)
+      for (let i = 0; i < p.occurences; ++i) {
+        res.push({
+          source: this.id,
+          target: k,
+          outview: false
+        })
+      }
+    })
+    this.livingOutview.forEach((p, k) => {
+      console.log('o:', k)
+      for (let i = 0; i < p.occurences; ++i) {
+        res.push({
+          source: this.id,
+          target: k,
+          outview: true
+        })
+      }
+    })
+    return res
   }
 }
 
