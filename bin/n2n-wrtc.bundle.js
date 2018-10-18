@@ -967,6 +967,16 @@ class N2N extends AbstractN2N {
 
   /**
    * @description Get all reachable neighbours including socket, occurences, lock and ids
+   * Even if the connection is totally locked you can see it
+   * @return {Array<Object>} Array of object [{peer: {socket, occurences, lock}, id}]
+   */
+  getAllNeighbours () {
+    return this.view.getAllNeighbours()
+  }
+
+  /**
+   * @description Get all reachable neighbours including socket, occurences, lock and ids
+   * If the connection is totally locked you cant see it.
    * @return {Array<Object>} Array of object [{peer: {socket, occurences, lock}, id}]
    */
   getNeighbours () {
@@ -1618,10 +1628,28 @@ class Neighborhood extends EventEmitter {
 
   /**
    * @description Get all reachable neighbours including socket, occurences, lock and ids
+   * If the connection is totally locked you cant see it.
    * @return {Array<Object>} Array of object [{peer: {socket, occurences, lock}, id}]
    */
   getNeighbours () {
     return this.getNeighboursOutview()
+  }
+  /**
+   * @description Get all reachable neighbours including socket, occurences, lock and ids
+   * Even if the connection is totally locked you can see it
+   * @return {Array<Object>} Array of object [{peer: {socket, occurences, lock}, id}]
+   */
+  getAllNeighbours () {
+    const res = []
+    this.livingOutview.forEach((v, k) => {
+      if (v.occurences > 0) {
+        res.push({
+          peer: v,
+          id: k
+        })
+      }
+    })
+    return res
   }
 
   /**

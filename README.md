@@ -91,21 +91,23 @@ peer-sampling protocols.
 - [x] **Offline signaling** allowing to do `a.connect(b)`
 - [x] **Signaling server** for online signaling `npm run signaling` or `require('n2n-wrtc/lib/signaling/server').server()`
 - [x] **Online signaling** allowing to do `a.connect()` using a signaling server
-- [x] **Get a list of all neighbours** including inview/outview/sockets `a.getNeighbours()` will return a Map containing every connections
-- [x] **Get a list of all neighbours ids** (inview/outview): `a.getNeighboursIds()`
+- [x] **Get a list of all neighbours (not locked)** including outview/sockets `a.getNeighbours()` will return a Map containing every connections
+- [x] **Get a list of all neighbours (even if locked)** including outview/sockets `a.getAllNeighbours()` will return a Map containing every connections
+- [x] **Get a list of all neighbours ids (not locked)** (outview): `a.getNeighboursIds()`
 - [x] **Get only inview ids**: `a.getNeighboursInview()`
-- [x] **Get only outview ids**: `a.getNeighboursOutview()`
+- [x] **Get only outview ids (not locked)**: `a.getNeighboursOutview()`
 - [x] **Send** a message over Unicast:  `a.send(b.id, 'meow');`
 - [x] **Listen on incoming messages**: `b.on('receive', (id, message) => ...);`
-- [ ] Create the internal signaling service:
+- [x] Create the internal signaling service:
   - Allow to forward offers from an inview neighbour to an outview neighbour
   - After connection new offers are transmitted by message (usefull for re-negociation)
-- [ ] Create bridge connections allowing to do: `a.bridge(b.id, c.id)` if b and c are neighbours
-- [ ] Create from -> to connections allowing to do: `a.connectTo(b.id)`
+- [x] Create bridge connections allowing to do: `a.connectBridge(b.id, c.id)` if b and c are neighbours
+- [x] Create from -> to connections allowing to do: `a.connectFromUs(b.id)`
   - It means that it increments our outview and increment the inview of the neighbor
-- [ ] Create to -> from connections
+- [x] Create a Direct signaling service
+- [x] Create to -> from connections
   - It means that it does the same thing than from -> to but from the neighbor: `a.connectFrom(b.id)`
+  - If the connection does not exist, create the connection using the direct signaling service
 - [ ] Encapsulate each message sent for distinguish admin messages from application messages
 - [ ] Minimize the encapsulation
 - [ ] Control the size of the object sent and create a mechanism to handle bigger files (chunkification)
-- [ ] Connection/Disconnection/MessageSendFunction bufferization in N2N module.
