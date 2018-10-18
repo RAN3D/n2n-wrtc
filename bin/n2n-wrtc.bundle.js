@@ -489,6 +489,8 @@ const events = {
   },
   n2n: {
     CONNECT_TO_US: 'c:2:u',
+    DIRECT_TO: 'd:2',
+    DIRECT_BACK: 'd:b',
     BRIDGE: 'b',
     BRIDGE_FORWARD: 'b:f',
     BRIDGE_FORWARD_BACK: 'b:f:b',
@@ -536,6 +538,7 @@ const events = __webpack_require__(/*! ./events */ "./lib/events.js")
 const translator = short()
 const EventEmitter = __webpack_require__(/*! events */ "./node_modules/events/events.js")
 const BridgeSignaling = __webpack_require__(/*! ./signaling */ "./lib/signaling/index.js").bridge
+const DirectSignaling = __webpack_require__(/*! ./signaling */ "./lib/signaling/index.js").direct
 
 class N2N extends AbstractN2N {
   constructor (options) {
@@ -571,7 +574,8 @@ class N2N extends AbstractN2N {
     })
 
     this.signaling = {
-      bridge: new BridgeSignaling(this.options.signaling, this)
+      bridge: new BridgeSignaling(this.options.signaling, this),
+      direct: new DirectSignaling(this.options.signaling, this)
     }
 
     this.signaling.bridge.on(events.signaling.RECEIVE_OFFER, ({ initiator, destination, forward, offerType, offer }) => {
@@ -586,6 +590,44 @@ class N2N extends AbstractN2N {
             initiator,
             destination,
             forward,
+            offer: socketOffer,
+            offerType: 'back'
+          })
+        })
+        // WE RECEIVE THE OFFER ON THE ACCEPTOR
+        this.view.livingInview.get(initiator).socket.emit(events.socket.RECEIVE_OFFER, offer)
+      } else {
+        // now if it is a new offer, give it to initiator socket, otherwise to destination socket
+        if (offerType === 'new') {
+          try {
+            // WE RECEIVE THE OFFER ON THE ACCEPTOR
+            this.view.livingInview.get(initiator).socket.emit(events.socket.RECEIVE_OFFER, offer)
+          } catch (e) {
+            console.error('PLEASE REPORT THIS ISSUE: ', e)
+          }
+        } else if (offerType === 'back') {
+          try {
+            // WE RECEIVE THE ACCEPTED OFFER ON THE INITIATOR
+            this.view.livingOutview.get(destination).socket.emit(events.socket.RECEIVE_OFFER, offer)
+          } catch (e) {
+            console.error('PLEASE REPORT THIS ISSUE: ', e)
+          }
+        }
+      }
+    })
+
+    this.signaling.direct.on(events.signaling.RECEIVE_OFFER, ({ initiator, destination, offerType, offer }) => {
+      console.log({ initiator, destination, offerType, offer })
+      if (!initiator || !destination || !offer || !offerType) throw new Error('PLEASE REPORT, Problem with the offline signaling service. provide at least initiator, destination, type a,d the offer as properties in the object received')
+      // do we have the initiator in our list of connections?
+      if (!this.view.livingInview.has(initiator) && offerType === 'new') {
+        // we do have the socket for the moment, create it
+        this.view.createNewSocket(this.options.socket, initiator, false)
+        // ATTENTION: LISTENERS HAVE TO BE DECLARED ONCE!
+        this.view.livingInview.get(initiator).socket.on(events.socket.EMIT_OFFER, (socketOffer) => {
+          this.signaling.direct.sendOfferBack({
+            initiator,
+            destination,
             offer: socketOffer,
             offerType: 'back'
           })
@@ -630,6 +672,39 @@ class N2N extends AbstractN2N {
   }
 
   /**
+   * Perform connections using existing connection or create new one using a bridge connection.
+   * null means us
+   * 'from' is null and 'to' is null: error
+   * 'from' is null and 'to' is string: add an outview occurence (an arc)
+   * 'to' is null and 'from' is string: add an outview from 'from'
+   * 'from' is string and 'to' is string: bridge, add an arc (or create the connection) between 'from' and 'to' exchanging offers through us (not using a signaling server)
+   * @param  {String|null}  [from=null] peer id
+   * @param  {String|null}  [to=null]   peer id
+   * @return {Promise} resolved if the promise of chosen case is resolved, otherwise reject with the appropriate method
+   */
+  async connect4u (from = null, to = null) {
+    if (from && typeof from === 'string' && to && typeof to === 'string') {
+      console.log('connectBridge: ', from, to)
+      // bridge: create a connection between from and to if from is in inview and to is in outview
+      return this.connectBridge(from, to)
+    } else if (from && typeof from === 'string' && to === null) {
+      console.log('connectToUs: ', from, to)
+      // from to to us
+      return this.connectToUs(from)
+    } else if (to && typeof to === 'string' && from === null) {
+      console.log('connectFromUs: ', from, to)
+      // connection from us to to
+      if (this.view.livingOutview.has(to)) {
+        return this.connectFromUs(to)
+      } else {
+        throw new Error(to + ' need to be in our outview.')
+      }
+    } else {
+      throw errors.nyi()
+    }
+  }
+
+  /**
    * Add outview connection to the peer specified by peerId (use an existing connection for that.)
    * @param  {String}  peerId peer id to connect with
    * @return {Promise} Resolve when successfully established. Rject otherwise
@@ -663,8 +738,8 @@ class N2N extends AbstractN2N {
         }, timeout)
         // first send a message to peerId
         const jobId = translator.new()
-        this.events.on(jobId, (response) => {
-          if (response) {
+        this.events.once(jobId, (msg) => {
+          if (msg.response) {
             // means yes, connection created
             this.view.unlock(peerId)
             clearTimeout(tout)
@@ -687,6 +762,45 @@ class N2N extends AbstractN2N {
     }
   }
 
+  async _connectToUs (peerId) {
+    if (!this.view.livingOutview.has(peerId) && this.view.livingInview.has(peerId)) {
+      return new Promise((resolve, reject) => {
+        // we need to create the connection by exchanging offer between the two peers
+        const tout = setTimeout(() => {
+          throw new Error('timeout')
+        }, this.options.n2n.timeout)
+        const socket = this.view.createNewSocket(this.options.socket, peerId, true)
+        socket.on('error', (error) => {
+          this.view._manageError(error, peerId, true, reject)
+        })
+        socket.on(events.socket.EMIT_OFFER, (offer) => {
+          const off = {
+            initiator: this.id,
+            destination: peerId,
+            offer,
+            offerType: 'new'
+          }
+          this.signaling.direct.sendOfferTo(off)
+        })
+        socket.connect().then(() => {
+          clearTimeout(tout)
+          this.view.increaseOccurences(peerId).then(() => {
+            resolve()
+          }).catch(e => {
+            reject(e)
+          })
+        }).catch(e => {
+          clearTimeout(tout)
+          reject(e)
+        })
+      })
+    } else if (this.view.livingOutview.has(peerId) && this.view.livingInview.has(peerId)) {
+      return this.connectFromUs(peerId)
+    } else {
+      throw new Error('Not allowed. Are you trying to beat me?')
+    }
+  }
+
   /**
    * Connect the from peer to the dest peer by sending offer through you
    * The Dest peer must be in your outview list. Otherwise it will reject.
@@ -699,7 +813,7 @@ class N2N extends AbstractN2N {
     return new Promise((resolve, reject) => {
       // first verify if we have dest in our outview
       if (!this.view.livingOutview.has(dest)) {
-        reject(errors.peerNotFound(dest))
+        reject(new Error(dest + ' must be in our outview.'))
       } else {
         // lock the connection
         this.view.lock(dest)
@@ -708,8 +822,8 @@ class N2N extends AbstractN2N {
           this.view.unlock(dest)
           reject(new Error('timeout'))
         }, timeout)
-        this.events.on(jobId, (response) => {
-          if (response) {
+        this.events.once(jobId, (msg) => {
+          if (msg.response) {
             this.view.unlock(dest)
             clearTimeout(tout)
             resolve()
@@ -885,9 +999,15 @@ class N2N extends AbstractN2N {
     return this.view.send(id, msg)
   }
 
+  /**
+   * Listener called when a message is received from Neighborhood's sockets
+   * @param  {String} id      peer id we receive the message
+   * @param  {Object} message data received
+   * @return {void}
+   */
   _receive (id, message) {
     if (message && message.type && message.id && message.type === events.n2n.CONNECT_TO_US) {
-      this.connectFromUs(message.id).then(() => {
+      this._connectToUs(message.id).then(() => {
         this.send(id, {
           type: events.n2n.RESPONSE,
           jobId: message.jobId,
@@ -901,7 +1021,13 @@ class N2N extends AbstractN2N {
         })
       })
     } else if (message && message.type && message.response && message.type === events.n2n.RESPONSE) {
-      this.events.emit(message.jobId, message.response)
+      this.events.emit(message.jobId, message)
+    } else if (message && message.type && message.type === events.n2n.DIRECT_TO) {
+      console.log('direct_to: ', id, message)
+      this.signaling.direct.receiveOffer(message)
+    } else if (message && message.type && message.type === events.n2n.DIRECT_BACK) {
+      console.log('direct_back: ', id, message)
+      this.signaling.direct.receiveOffer(message)
     } else if (message && message.type && message.type === events.n2n.BRIDGE) {
       this._bridge(id, message)
     } else if (message && message.type && message.type === events.n2n.BRIDGE_FORWARD) {
@@ -972,8 +1098,10 @@ class Neighborhood extends EventEmitter {
     super()
     this._debug = (__webpack_require__(/*! debug */ "./node_modules/debug/src/browser.js"))('n2n:neighborhood')
     this.options = options
-    this.livingInview = new Map()
-    this.livingOutview = new Map()
+    this.__view = (__webpack_require__(/*! ./view */ "./lib/neighborhood/view.js"))
+    const ViewClass = this.__view
+    this.livingInview = new ViewClass()
+    this.livingOutview = new ViewClass()
     this._debug('Options set: ', this.options)
     this.id = this.options.neighborhood.id
     this.signaling = {
@@ -1283,9 +1411,9 @@ class Neighborhood extends EventEmitter {
    * @return {Promise} Promise resolved when the message is sent, reject if the peer is not found or an error is return from the send method of the socket used.
    */
   async send (peerId, message) {
-    if (this.livingOutview.has(peerId)) {
+    if (this.livingOutview.exist(peerId) && this.livingOutview.get(peerId).socket.status === 'connected') {
       return this.livingOutview.get(peerId).socket.send(this._serialize(message))
-    } else if (this.livingInview.has(peerId)) {
+    } else if (this.livingInview.exist(peerId) && this.livingInview.get(peerId).socket.status === 'connected') {
       return this.livingInview.get(peerId).socket.send(this._serialize(message))
     } else {
       throw errors.peerNotFound(peerId)
@@ -1542,6 +1670,39 @@ module.exports = Neighborhood
 
 /***/ }),
 
+/***/ "./lib/neighborhood/view.js":
+/*!**********************************!*\
+  !*** ./lib/neighborhood/view.js ***!
+  \**********************************/
+/*! no static exports found */
+/***/ (function(module, exports) {
+
+class View extends Map {
+  has (id) {
+    if (super.has(id)) {
+      const node = super.get(id)
+      if (node.occurences === 0 && node.lock === 0) {
+        return true
+      } else if ((node.occurences - node.lock) > 0) {
+        return true
+      } else {
+        return false
+      }
+    } else {
+      return false
+    }
+  }
+
+  exist (id) {
+    return super.has(id)
+  }
+}
+
+module.exports = View
+
+
+/***/ }),
+
 /***/ "./lib/signaling/bridge.js":
 /*!*********************************!*\
   !*** ./lib/signaling/bridge.js ***!
@@ -1612,6 +1773,64 @@ module.exports = BridgeSignaling
 
 /***/ }),
 
+/***/ "./lib/signaling/direct.js":
+/*!*********************************!*\
+  !*** ./lib/signaling/direct.js ***!
+  \*********************************/
+/*! no static exports found */
+/***/ (function(module, exports, __webpack_require__) {
+
+const SignalingAPI = __webpack_require__(/*! ../api */ "./lib/api/index.js").signaling
+const events = __webpack_require__(/*! ../events */ "./lib/events.js")
+const debug = __webpack_require__(/*! debug */ "./node_modules/debug/src/browser.js")
+
+class DirectSignaling extends SignalingAPI {
+  constructor (options, n2n) {
+    super(options)
+    this.parent = n2n
+    this._debug = debug('n2n:direct')
+  }
+  /**
+   * @description Connect.Just connect, oh wait? (-_-)
+   * @param  {Object}  options options for the connection if needed
+   * @return {Promise}            Promise resolved when the connection succeeded
+   */
+  async connect (options) {}
+  /**
+   * Send an offer to the forwarding peer
+   * @param  {Object}  offer  the offer to send
+   * @return {Promise}        Promise resolved when the offer has been sent
+   */
+  async sendOfferTo (offer) {
+    offer.type = events.n2n.DIRECT_TO
+    this._debug('[%s] send to direct peer: %s', this.parent.id, offer.destination, offer)
+    this.parent.send(offer.destination, offer).catch(e => {
+      console.error('[%s] send to direct, error', this.parent.id, e)
+    }).then(() => {
+      console.log('[%s] send to direct, message sent.', this.parent.id)
+    })
+  }
+  /**
+   * Send back an accepted offer to the forwarding peer
+   * @param  {Object}  offer  the offer to send
+   * @return {Promise}        Promise resolved when the offer has been sent
+   */
+  async sendOfferBack (offer) {
+    offer.type = events.n2n.DIRECT_BACK
+    this._debug('[%s] send back the offer to the direct peer: %s', this.parent.id, offer.initiator, offer)
+    this.parent.send(offer.initiator, offer).catch(e => {
+      console.error('[%s] send back to direct, error', this.parent.id, e)
+    }).then(() => {
+      console.log('[%s] send back to direct, message sent.', this.parent.id)
+    })
+  }
+} // not implemented for the moment
+
+module.exports = DirectSignaling
+
+
+/***/ }),
+
 /***/ "./lib/signaling/index.js":
 /*!********************************!*\
   !*** ./lib/signaling/index.js ***!
@@ -1622,7 +1841,8 @@ module.exports = BridgeSignaling
 module.exports = {
   online: __webpack_require__(/*! ./online */ "./lib/signaling/online.js"),
   offline: __webpack_require__(/*! ./offline */ "./lib/signaling/offline.js"),
-  bridge: __webpack_require__(/*! ./bridge */ "./lib/signaling/bridge.js")
+  bridge: __webpack_require__(/*! ./bridge */ "./lib/signaling/bridge.js"),
+  direct: __webpack_require__(/*! ./direct */ "./lib/signaling/direct.js")
 }
 
 
@@ -1912,13 +2132,8 @@ class SimplePeerWrapper extends Socket {
 
   async _send (data) {
     this._debug('sending data: ', data)
-    try {
-      this._create()
-      this.__socket.send(data)
-      return Promise.resolve()
-    } catch (e) {
-      return Promise.reject(e)
-    }
+    this._create()
+    this.__socket.send(data)
   }
 
   async _disconnect () {
