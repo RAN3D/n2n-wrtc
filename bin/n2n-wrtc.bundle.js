@@ -474,7 +474,7 @@ module.exports = function (peer) {
 /*! no static exports found */
 /***/ (function(module, exports) {
 
-const events = {
+module.exports = {
   socket: {
     RECEIVE_OFFER: 'socket-ro',
     EMIT_OFFER: 'socket-eo'
@@ -498,8 +498,6 @@ const events = {
     RESPONSE: 'r'
   }
 }
-
-module.exports = events
 
 
 /***/ }),
@@ -566,16 +564,21 @@ class N2N extends AbstractN2N {
     this.view.on('receive', (id, message) => {
       this._receive(id, message)
     })
-    this.view.on('in', (id, outview) => {
-      this.emit('connect', id, outview)
+    this.view.on('in', (id) => {
+      this.emit('connect', id, false)
       this.emit('in', id)
     })
-    this.view.on('out', (id, outview) => {
-      this.emit('connect', id, outview)
+    this.view.on('out', (id) => {
+      this.emit('connect', id, true)
       this.emit('out', id)
     })
-    this.view.on('close', id => {
-      this.emit('close', id)
+    this.view.on('close_in', id => {
+      this.emit('close', id, false)
+      this.emit('close_in', id)
+    })
+    this.view.on('close_out', id => {
+      this.emit('close', id, true)
+      this.emit('close_out', id)
     })
 
     this.signaling = {
@@ -622,7 +625,6 @@ class N2N extends AbstractN2N {
     })
 
     this.signaling.direct.on(events.signaling.RECEIVE_OFFER, ({ initiator, destination, offerType, offer }) => {
-      console.log({ initiator, destination, offerType, offer })
       if (!initiator || !destination || !offer || !offerType) throw new Error('PLEASE REPORT, Problem with the offline signaling service. provide at least initiator, destination, type a,d the offer as properties in the object received')
       // do we have the initiator in our list of connections?
       if (!this.view.livingInview.has(initiator) && offerType === 'new') {
@@ -689,15 +691,12 @@ class N2N extends AbstractN2N {
    */
   async connect4u (from = null, to = null) {
     if (from && typeof from === 'string' && to && typeof to === 'string') {
-      console.log('connectBridge: ', from, to)
       // bridge: create a connection between from and to if from is in inview and to is in outview
       return this.connectBridge(from, to)
     } else if (from && typeof from === 'string' && to === null) {
-      console.log('connectToUs: ', from, to)
       // from to to us
       return this.connectToUs(from)
     } else if (to && typeof to === 'string' && from === null) {
-      console.log('connectFromUs: ', from, to)
       // connection from us to to
       if (this.view.livingOutview.has(to)) {
         return this.connectFromUs(to)
@@ -1029,10 +1028,8 @@ class N2N extends AbstractN2N {
     } else if (message && message.type && message.response && message.type === events.n2n.RESPONSE) {
       this.events.emit(message.jobId, message)
     } else if (message && message.type && message.type === events.n2n.DIRECT_TO) {
-      console.log('direct_to: ', id, message)
       this.signaling.direct.receiveOffer(message)
     } else if (message && message.type && message.type === events.n2n.DIRECT_BACK) {
-      console.log('direct_back: ', id, message)
       this.signaling.direct.receiveOffer(message)
     } else if (message && message.type && message.type === events.n2n.BRIDGE) {
       this._bridge(id, message)
@@ -1604,7 +1601,11 @@ class Neighborhood extends EventEmitter {
    * @return {void}
    */
   _signalDisconnect (id, outview) {
-    this.emit('close', id, outview)
+    if (outview) {
+      this.emit('close_out', id, outview)
+    } else {
+      this.emit('close_in', id, outview)
+    }
   }
 
   /**
