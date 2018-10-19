@@ -1697,7 +1697,6 @@ class Neighborhood extends EventEmitter {
   getArcs () {
     const res = []
     this.livingInview.forEach((p, k) => {
-      console.log('i:', k)
       for (let i = 0; i < p.occurences; ++i) {
         res.push({
           source: this.id,
@@ -1707,7 +1706,6 @@ class Neighborhood extends EventEmitter {
       }
     })
     this.livingOutview.forEach((p, k) => {
-      console.log('o:', k)
       for (let i = 0; i < p.occurences; ++i) {
         res.push({
           source: this.id,
@@ -1861,8 +1859,6 @@ class DirectSignaling extends SignalingAPI {
     this._debug('[%s] send to direct peer: %s', this.parent.id, offer.destination, offer)
     this.parent.send(offer.destination, offer).catch(e => {
       console.error('[%s] send to direct, error', this.parent.id, e)
-    }).then(() => {
-      console.log('[%s] send to direct, message sent.', this.parent.id)
     })
   }
   /**
@@ -1875,8 +1871,6 @@ class DirectSignaling extends SignalingAPI {
     this._debug('[%s] send back the offer to the direct peer: %s', this.parent.id, offer.initiator, offer)
     this.parent.send(offer.initiator, offer).catch(e => {
       console.error('[%s] send back to direct, error', this.parent.id, e)
-    }).then(() => {
-      console.log('[%s] send back to direct, message sent.', this.parent.id)
     })
   }
 } // not implemented for the moment
