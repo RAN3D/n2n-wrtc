@@ -85,10 +85,16 @@ peer-sampling protocols.</p>
 <li>After connection new offers are transmitted by message (usefull for re-negociation)</li>
 </ul>
 </li>
-<li class="docma task-item"><input type="checkbox" disabled="" checked=""> &nbsp;Create bridge connections allowing to do: <code>a.connectBridge(b.id, c.id)</code><ul>
-<li>if b and c are neighbours</li>
+<li class="docma task-item"><input type="checkbox" disabled="" checked=""> &nbsp;Create bridge connections allowing to do: <code>a.connectBridgeOutviewToInview(b.id, c.id)</code><ul>
+<li>if B and C are neighbours</li>
 <li>B need to be in your inview</li>
 <li>C need to be in your outview</li>
+</ul>
+</li>
+<li class="docma task-item"><input type="checkbox" disabled="" checked=""> &nbsp;Create bridge connections allowing to do: <code>a.connectBridgeInviewToOutview(b.id, c.id)</code><ul>
+<li>if B and C are neighbours</li>
+<li>B need to be in your outview</li>
+<li>C need to be in your inview</li>
 </ul>
 </li>
 <li class="docma task-item"><input type="checkbox" disabled="" checked=""> &nbsp;Create from -&gt; to connections allowing to do: <code>a.connectFromUs(b.id)</code><ul>
@@ -101,6 +107,7 @@ peer-sampling protocols.</p>
 <li>If the connection does not exist, create the connection using the direct signaling service</li>
 </ul>
 </li>
+<li><code>a.connect4u(&lt;id&gt;, &lt;id&gt;)</code> choose for you what kind of method to apply to perform the connection for you.</li>
 <li class="docma task-item"><input type="checkbox" disabled=""> &nbsp;Encapsulate each message sent for distinguish admin messages from application messages</li>
 <li class="docma task-item"><input type="checkbox" disabled=""> &nbsp;Minimize the encapsulation</li>
 <li class="docma task-item"><input type="checkbox" disabled=""> &nbsp;Control the size of the object sent and create a mechanism to handle bigger files (chunkification)</li>
