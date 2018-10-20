@@ -101,16 +101,21 @@ peer-sampling protocols.
 - [x] Create the internal signaling service:
   - Allow to forward offers from an inview neighbour to an outview neighbour
   - After connection new offers are transmitted by message (usefull for re-negociation)
-- [x] Create bridge connections allowing to do: `a.connectBridge(b.id, c.id)`
-  - if b and c are neighbours
+- [x] Create bridge connections allowing to do: `a.connectBridgeOutviewToInview(b.id, c.id)`
+  - if B and C are neighbours
   - B need to be in your inview
   - C need to be in your outview
+- [x] Create bridge connections allowing to do: `a.connectBridgeInviewToOutview(b.id, c.id)`
+  - if B and C are neighbours
+  - B need to be in your outview
+  - C need to be in your inview
 - [x] Create from -> to connections allowing to do: `a.connectFromUs(b.id)`
   - It means that it increments our outview and increment the inview of the neighbor
 - [x] Create a Direct signaling service
 - [x] Create to -> from connections
   - It means that it does the same thing than from -> to but from the neighbor: `a.connectFrom(b.id)`
   - If the connection does not exist, create the connection using the direct signaling service
+- `a.connect4u(<id>, <id>)` choose for you what kind of method to apply to perform the connection for you.
 - [ ] Encapsulate each message sent for distinguish admin messages from application messages
 - [ ] Minimize the encapsulation
 - [ ] Control the size of the object sent and create a mechanism to handle bigger files (chunkification)
