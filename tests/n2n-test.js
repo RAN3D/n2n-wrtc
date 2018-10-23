@@ -1,25 +1,24 @@
 const N2N = require('../lib').N2N
 const assert = require('assert')
 const utils = require('../lib/utils')
-
+const socket = {
+  moc: false,
+  wrtc: require('wrtc'),
+  tricle: true
+}
 describe('N2N connection', function () {
   this.timeout(30 * 1000)
   it('offline connection, connect method with inview/outview', async () => {
     const a = new N2N({
-      socket: {
-        trickle: true,
-        moc: true
-      }
+      socket
     })
     const b = new N2N({
-      socket: {
-        trickle: true,
-        moc: true
-      }
+      socket
     })
     return new Promise((resolve, reject) => {
       a.connect(b).then(() => {
         assert.strictEqual(a.getNeighboursIds().length, 1)
+        assert.strictEqual(a.view.livingOutview.get(b.id).occurences, 1)
         assert.strictEqual(b.getNeighboursIds().length, 0)
         resolve()
       }).catch(e => {
@@ -30,18 +29,13 @@ describe('N2N connection', function () {
 
   it('offline connection send function', async () => {
     const a = new N2N({
-      socket: {
-        trickle: true,
-        moc: true
-      }
+      socket
     })
     const b = new N2N({
-      socket: {
-        trickle: true,
-        moc: true
-      }
+      socket
     })
     await a.connect(b)
+    assert.strictEqual(a.view.livingOutview.get(b.id).occurences, 1)
     return new Promise((resolve, reject) => {
       a.send('receive', b.id, 'miaou').then(() => {
         console.log('[test] message sent.')
@@ -62,22 +56,21 @@ describe('N2N connection', function () {
 
   it('offline connection, check inview/outview', async () => {
     const a = new N2N({
-      socket: {
-        trickle: true,
-        moc: true
-      }
+      socket
     })
     const b = new N2N({
-      socket: {
-        trickle: true,
-        moc: true
-      }
+      socket
     })
     await a.connect(b)
+    assert.strictEqual(a.view.livingOutview.get(b.id).occurences, 1)
     await a.connect(b)
+    assert.strictEqual(a.view.livingOutview.get(b.id).occurences, 2)
     await a.connect(b)
+    assert.strictEqual(a.view.livingOutview.get(b.id).occurences, 3)
     await a.connect(b)
+    assert.strictEqual(a.view.livingOutview.get(b.id).occurences, 4)
     await a.connect(b)
+    assert.strictEqual(a.view.livingOutview.get(b.id).occurences, 5)
     await a.connect(b)
     await utils.timeout(1000)
     assert.strictEqual(a.getNeighboursIds().length, 1)
@@ -92,22 +85,21 @@ describe('N2N connection', function () {
 
   it('offline connection, check inview/outview', async () => {
     const a = new N2N({
-      socket: {
-        trickle: true,
-        moc: true
-      }
+      socket
     })
     const b = new N2N({
-      socket: {
-        trickle: true,
-        moc: true
-      }
+      socket
     })
     await a.connect(b)
+    assert.strictEqual(a.view.livingOutview.get(b.id).occurences, 1)
     await a.connect(b)
+    assert.strictEqual(a.view.livingOutview.get(b.id).occurences, 2)
     await a.connect(b)
+    assert.strictEqual(a.view.livingOutview.get(b.id).occurences, 3)
     await a.connect(b)
+    assert.strictEqual(a.view.livingOutview.get(b.id).occurences, 4)
     await a.connect(b)
+    assert.strictEqual(a.view.livingOutview.get(b.id).occurences, 5)
     await a.connect(b)
     await utils.timeout(1000)
     assert.strictEqual(a.getNeighboursIds().length, 1)
@@ -121,22 +113,21 @@ describe('N2N connection', function () {
   })
   it('offline connection+disconnection a need to be at 0/1 and b at 1/0 (outview/inview)', async () => {
     const a = new N2N({
-      socket: {
-        trickle: true,
-        moc: true
-      }
+      socket
     })
     const b = new N2N({
-      socket: {
-        trickle: true,
-        moc: true
-      }
+      socket
     })
     await a.connect(b)
+    assert.strictEqual(a.view.livingOutview.get(b.id).occurences, 1)
     await a.connect(b)
+    assert.strictEqual(a.view.livingOutview.get(b.id).occurences, 2)
     await a.connect(b)
+    assert.strictEqual(a.view.livingOutview.get(b.id).occurences, 3)
     await a.connect(b)
+    assert.strictEqual(a.view.livingOutview.get(b.id).occurences, 4)
     await a.connect(b)
+    assert.strictEqual(a.view.livingOutview.get(b.id).occurences, 5)
     await a.connect(b)
     await utils.timeout(1000)
     assert.strictEqual(a.getNeighboursIds().length, 1)
@@ -170,22 +161,21 @@ describe('N2N connection', function () {
 
   it('offline connection+disconnection, a: 0/0 b: 0/0', async () => {
     const a = new N2N({
-      socket: {
-        trickle: true,
-        moc: true
-      }
+      socket
     })
     const b = new N2N({
-      socket: {
-        trickle: true,
-        moc: true
-      }
+      socket
     })
     await a.connect(b)
+    assert.strictEqual(a.view.livingOutview.get(b.id).occurences, 1)
     await a.connect(b)
+    assert.strictEqual(a.view.livingOutview.get(b.id).occurences, 2)
     await a.connect(b)
+    assert.strictEqual(a.view.livingOutview.get(b.id).occurences, 3)
     await a.connect(b)
+    assert.strictEqual(a.view.livingOutview.get(b.id).occurences, 4)
     await a.connect(b)
+    assert.strictEqual(a.view.livingOutview.get(b.id).occurences, 5)
     await a.connect(b)
     await utils.timeout(1000)
     assert.strictEqual(a.getNeighboursIds().length, 1)
@@ -226,22 +216,13 @@ describe('N2N connection', function () {
   })
   it('offline connection+disconnection, bridge must work in the perfect world', async () => {
     const a = new N2N({
-      socket: {
-        trickle: true,
-        moc: true
-      }
+      socket
     })
     const b = new N2N({
-      socket: {
-        trickle: true,
-        moc: true
-      }
+      socket
     })
     const c = new N2N({
-      socket: {
-        trickle: true,
-        moc: true
-      }
+      socket
     })
     await a.connect(b)
     await utils.timeout(500)
@@ -266,22 +247,13 @@ describe('N2N connection', function () {
   })
   it('offline connection+disconnection, bridge cannot work with a conenction locked on dest', async () => {
     const a = new N2N({
-      socket: {
-        trickle: true,
-        moc: true
-      }
+      socket
     })
     const b = new N2N({
-      socket: {
-        trickle: true,
-        moc: true
-      }
+      socket
     })
     const c = new N2N({
-      socket: {
-        trickle: true,
-        moc: true
-      }
+      socket
     })
     await a.connect(b)
     assert.strictEqual(a.view.livingInview.size, 0)

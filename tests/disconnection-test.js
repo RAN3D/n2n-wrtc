@@ -1,6 +1,5 @@
 const N2N = require('../lib').N2N
 const assert = require('assert')
-const utils = require('../lib/utils')
 
 describe('Disconnection', function () {
   this.timeout(2 * 60 * 1000)
