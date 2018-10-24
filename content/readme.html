@@ -13,8 +13,43 @@ This allows to do the same job but the package is completely rebuilt from scratc
 <pre><code>npm install --save n2n-wrtc
 </code></pre><h2 id="usage">Usage</h2>
 <hr />
-<p>In the browser the library is available through the name n2n</p>
-<p>In NodeJs just do <code>const n2n = require('n2n')</code></p>
+<p>Just add in your index.html:</p>
+<pre><code class="lang-js">&lt;script type='text/javascript' src='./node_modules/n2n-wrtc/bin/n2n-wrtc.bundle.min.js'&gt;&lt;/script&gt;
+</code></pre>
+<p>Then the library is available through the name <strong>n2n</strong></p>
+<p>In <strong>NodeJs</strong> just do <code>const n2n = require('n2n')</code></p>
+<p>Now an example of how to using it (without the signaling server):</p>
+<pre><code class="lang-javascript">const N2N = n2n.N2N // get the N2N class
+
+const a = create('a')
+const b = create('b')
+const c = create('c')
+
+async function start() {
+  await b.connect(a)
+  await c.connect(b)
+  await b.bridgeOI(a.id, c.id)
+}
+
+async().then(() =&gt; {
+  console.log('B is connected to A')
+  console.log('C is connected to B')
+  console.log('A is connected to C using B as forwarding peer.')
+})
+
+function create(id) {
+  return new N2N({
+    n2n: {
+      id
+    },
+    socket: {
+      trickle: true,
+      moc: true
+    }
+  })
+}
+</code></pre>
+<p>Using the signaling server you can just do <code>npm run signaling</code> and put <code>signaling: {room: 'myroom', address: 'http://localhost:5555'}</code> and then call <code>a.connect()</code> and <code>b.connect()</code> to connect b to a.</p>
 <h2 id="neighborhood">Neighborhood</h2>
 <hr />
 <p>Project that aims to ease the WebRTC connection establishment process. Among others, it alleviates the need to know which socket produced which offer. It also reuses existing connections instead of establishing new ones, when this is possible. It aims to be part of network protocols that build overlay networks and to provide them logical arcs - using identifiers - instead of channels. Finally, it is designed to handle multiple protocols, for they may share identical arcs. For instance, consider several applications embedded in a single web page, some of them are connected to a same peer. Instead of working completely on their own, these applications will share the same channel. The neighborhood-wrtc module will redirect the messages to the right applications.</p>
