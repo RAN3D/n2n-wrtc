@@ -89,15 +89,22 @@ peer-sampling protocols.
 - [x] Create WebRTC Wrapper using ([simple-peer](https://github.com/feross/simple-peer))
 - [ ] Create Bluetooth Wrapper using ([sabertooth](http://sabertooth-io.github.io/))
 - [x] **Offline signaling** allowing to do `a.connect(b)`
-- [x] **Signaling server** for online signaling `npm run signaling` or `require('n2n-wrtc/lib/signaling/server').server()`
+- [x] **Signaling server** for online signaling
+  - `npm run signaling` or
+  - `require('n2n-wrtc/lib/signaling/server').server()`
 - [x] **Online signaling** allowing to do `a.connect()` using a signaling server
-- [x] **Get a list of all neighbours (not locked)** `a.getNeighbours()`
+- [x] **Get a list of all neighbours (not locked)**:  
+  - `a.getNeighbours()`
 - [x] **Get a list of all neighbours (even if locked)** `a.getAllNeighbours(true)`
-- [x] **Get a list of all neighbours ids (locked/ not locked)** (outview): `a.getNeighboursIds([true/false])`
-- [x] **Get only inview ids**: `a.getNeighboursInview()`
+- [x] **Get a list of all neighbours ids (locked/ not locked)** (outview):
+  - `a.getNeighboursIds([true/false])`
+- [x] **Get only inview ids**:
+  - `a.getNeighboursInview()`
 - [x] **Get only outview ids (not locked)**: `a.getNeighboursOutview()`
-- [x] **Send** a message over Unicast and the received message will be emit on the specified event (here: 'receive'):  `a.send('receive', b.id, 'meow');`
-- [x] **Listen on incoming messages**: `b.on('receive', (id, message) => ...);`
+- [x] **Send** a message over Unicast and the received message will be emit on the specified event (here: 'receive'):
+  - `a.send('receive', b.id, 'meow');`
+- [x] **Listen on incoming messages**:
+  - `b.on('receive', (id, message) => ...);`
 - [x] Create the internal signaling service:
   - Allow to forward offers from an inview neighbour to an outview neighbour
   - After connection new offers are transmitted by message (usefull for re-negociation)
@@ -109,9 +116,10 @@ peer-sampling protocols.
   - **b.id need to be in our outview**
   - It means that it does the same thing than from -> to but from the neighbor: `a.connectFrom(b.id)`
   - If the connection does not exist, create the connection using the direct signaling service
-- `a.connect4u(<id>, <id>)` choose for you what kind of method to apply for performing the connection for you.
+- [x] `a.connect4u(<id>, <id>)` choose for you what kind of method to apply for performing the connection for you.
   - Be carefull, if a bridge is done, it is a bridge where from is in your inview and dest is in your outview.
   - For more choices, see `bridgeOO(...)` and `bridgeOI(...)` methods.
+- [ ] Ice Re-negociation, when a peer is connected, new offers are transferred using the connection.
 - [ ] Encapsulate each message sent for distinguish admin messages from application messages
 - [ ] Minimize the encapsulation
 - [ ] Control the size of the object sent and create a mechanism to handle bigger files (chunkification)
