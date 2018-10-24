@@ -71,43 +71,57 @@ peer-sampling protocols.</p>
 <li class="docma task-item"><input type="checkbox" disabled="" checked=""> &nbsp;Create WebRTC Wrapper using (<a href="https://github.com/feross/simple-peer">simple-peer</a>)</li>
 <li class="docma task-item"><input type="checkbox" disabled=""> &nbsp;Create Bluetooth Wrapper using (<a href="http://sabertooth-io.github.io/">sabertooth</a>)</li>
 <li class="docma task-item"><input type="checkbox" disabled="" checked=""> &nbsp;<strong>Offline signaling</strong> allowing to do <code>a.connect(b)</code></li>
-<li class="docma task-item"><input type="checkbox" disabled="" checked=""> &nbsp;<strong>Signaling server</strong> for online signaling <code>npm run signaling</code> or <code>require('n2n-wrtc/lib/signaling/server').server()</code></li>
+<li class="docma task-item"><input type="checkbox" disabled="" checked=""> &nbsp;<strong>Signaling server</strong> for online signaling<ul>
+<li><code>npm run signaling</code> or</li>
+<li><code>require('n2n-wrtc/lib/signaling/server').server()</code></li>
+</ul>
+</li>
 <li class="docma task-item"><input type="checkbox" disabled="" checked=""> &nbsp;<strong>Online signaling</strong> allowing to do <code>a.connect()</code> using a signaling server</li>
-<li class="docma task-item"><input type="checkbox" disabled="" checked=""> &nbsp;<strong>Get a list of all neighbours (not locked)</strong> <code>a.getNeighbours()</code></li>
+<li class="docma task-item"><input type="checkbox" disabled="" checked=""> &nbsp;<strong>Get a list of all neighbours (not locked)</strong>:  <ul>
+<li><code>a.getNeighbours()</code></li>
+</ul>
+</li>
 <li class="docma task-item"><input type="checkbox" disabled="" checked=""> &nbsp;<strong>Get a list of all neighbours (even if locked)</strong> <code>a.getAllNeighbours(true)</code></li>
-<li class="docma task-item"><input type="checkbox" disabled="" checked=""> &nbsp;<strong>Get a list of all neighbours ids (locked/ not locked)</strong> (outview): <code>a.getNeighboursIds([true/false])</code></li>
-<li class="docma task-item"><input type="checkbox" disabled="" checked=""> &nbsp;<strong>Get only inview ids</strong>: <code>a.getNeighboursInview()</code></li>
+<li class="docma task-item"><input type="checkbox" disabled="" checked=""> &nbsp;<strong>Get a list of all neighbours ids (locked/ not locked)</strong> (outview):<ul>
+<li><code>a.getNeighboursIds([true/false])</code></li>
+</ul>
+</li>
+<li class="docma task-item"><input type="checkbox" disabled="" checked=""> &nbsp;<strong>Get only inview ids</strong>:<ul>
+<li><code>a.getNeighboursInview()</code></li>
+</ul>
+</li>
 <li class="docma task-item"><input type="checkbox" disabled="" checked=""> &nbsp;<strong>Get only outview ids (not locked)</strong>: <code>a.getNeighboursOutview()</code></li>
-<li class="docma task-item"><input type="checkbox" disabled="" checked=""> &nbsp;<strong>Send</strong> a message over Unicast:  <code>a.send(b.id, 'meow');</code></li>
-<li class="docma task-item"><input type="checkbox" disabled="" checked=""> &nbsp;<strong>Listen on incoming messages</strong>: <code>b.on('receive', (id, message) =&gt; ...);</code></li>
+<li class="docma task-item"><input type="checkbox" disabled="" checked=""> &nbsp;<strong>Send</strong> a message over Unicast and the received message will be emit on the specified event (here: 'receive'):<ul>
+<li><code>a.send('receive', b.id, 'meow');</code></li>
+</ul>
+</li>
+<li class="docma task-item"><input type="checkbox" disabled="" checked=""> &nbsp;<strong>Listen on incoming messages</strong>:<ul>
+<li><code>b.on('receive', (id, message) =&gt; ...);</code></li>
+</ul>
+</li>
 <li class="docma task-item"><input type="checkbox" disabled="" checked=""> &nbsp;Create the internal signaling service:<ul>
 <li>Allow to forward offers from an inview neighbour to an outview neighbour</li>
 <li>After connection new offers are transmitted by message (usefull for re-negociation)</li>
 </ul>
 </li>
-<li class="docma task-item"><input type="checkbox" disabled="" checked=""> &nbsp;Create bridge connections allowing to do: <code>a.connectBridgeOutviewToInview(b.id, c.id)</code><ul>
-<li>if B and C are neighbours</li>
-<li>B need to be in your inview</li>
-<li>C need to be in your outview</li>
-</ul>
-</li>
-<li class="docma task-item"><input type="checkbox" disabled="" checked=""> &nbsp;Create bridge connections allowing to do: <code>a.connectBridgeInviewToOutview(b.id, c.id)</code><ul>
-<li>if B and C are neighbours</li>
-<li>B need to be in your outview</li>
-<li>C need to be in your inview</li>
-</ul>
-</li>
 <li class="docma task-item"><input type="checkbox" disabled="" checked=""> &nbsp;Create from -&gt; to connections allowing to do: <code>a.connectFromUs(b.id)</code><ul>
-<li>It means that it increments our outview and increment the inview of the neighbor</li>
+<li><strong>b.id need to be in our outview</strong></li>
+<li>It means that it increments our outview, not the inview of the neighbor</li>
 </ul>
 </li>
 <li class="docma task-item"><input type="checkbox" disabled="" checked=""> &nbsp;Create a Direct signaling service</li>
-<li class="docma task-item"><input type="checkbox" disabled="" checked=""> &nbsp;Create to -&gt; from connections<ul>
+<li class="docma task-item"><input type="checkbox" disabled="" checked=""> &nbsp;Create to -&gt; from connections <code>a.connectToUs(b.id)</code><ul>
+<li><strong>b.id need to be in our outview</strong></li>
 <li>It means that it does the same thing than from -&gt; to but from the neighbor: <code>a.connectFrom(b.id)</code></li>
 <li>If the connection does not exist, create the connection using the direct signaling service</li>
 </ul>
 </li>
-<li><code>a.connect4u(&lt;id&gt;, &lt;id&gt;)</code> choose for you what kind of method to apply to perform the connection for you.</li>
+<li class="docma task-item"><input type="checkbox" disabled="" checked=""> &nbsp;<code>a.connect4u(&lt;id&gt;, &lt;id&gt;)</code> choose for you what kind of method to apply for performing the connection for you.<ul>
+<li>Be carefull, if a bridge is done, it is a bridge where from is in your inview and dest is in your outview.</li>
+<li>For more choices, see <code>bridgeOO(...)</code> and <code>bridgeOI(...)</code> methods.</li>
+</ul>
+</li>
+<li class="docma task-item"><input type="checkbox" disabled=""> &nbsp;Ice Re-negociation, when a peer is connected, new offers are transferred using the connection.</li>
 <li class="docma task-item"><input type="checkbox" disabled=""> &nbsp;Encapsulate each message sent for distinguish admin messages from application messages</li>
 <li class="docma task-item"><input type="checkbox" disabled=""> &nbsp;Minimize the encapsulation</li>
 <li class="docma task-item"><input type="checkbox" disabled=""> &nbsp;Control the size of the object sent and create a mechanism to handle bigger files (chunkification)</li>
