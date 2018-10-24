@@ -2,8 +2,7 @@ const N2N = require('../lib').N2N
 const assert = require('assert')
 const utils = require('../lib/utils')
 const socket = {
-  moc: false,
-  wrtc: require('wrtc'),
+  moc: true,
   tricle: true
 }
 describe('N2N connection', function () {
@@ -37,11 +36,6 @@ describe('N2N connection', function () {
     await a.connect(b)
     assert.strictEqual(a.view.livingOutview.get(b.id).occurences, 1)
     return new Promise((resolve, reject) => {
-      a.send('receive', b.id, 'miaou').then(() => {
-        console.log('[test] message sent.')
-      }).catch(e => {
-        reject(e)
-      })
       a.on('receive', (id, message) => {
         assert.strictEqual(message, 'reply')
         resolve()
@@ -50,6 +44,11 @@ describe('N2N connection', function () {
         console.log('[test] receive: ', id, data)
         assert.strictEqual(data, 'miaou')
         b.send('receive', a.id, 'reply', false)
+      })
+      a.send('receive', b.id, 'miaou', true).then(() => {
+        console.log('[test] message sent.')
+      }).catch(e => {
+        reject(e)
       })
     })
   })
