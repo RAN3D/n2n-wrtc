@@ -1,4 +1,4 @@
-const Neighborhood = require('../lib').Neighborhood
+const N2N = require('../lib').N2N
 const assert = require('assert')
 const utils = require('../lib/utils')
 
@@ -16,7 +16,7 @@ describe('[Neighborhood] Online connection', function () {
     utils.stopServer(ss)
   })
   it('sending a message on an onlined connection need to be successfull', async () => {
-    const a = new Neighborhood({
+    const a = new N2N({
       signaling: {
         room: 'test'
       },
@@ -25,7 +25,7 @@ describe('[Neighborhood] Online connection', function () {
         moc: true
       }
     })
-    const b = new Neighborhood({
+    const b = new N2N({
       signaling: {
         room: 'test'
       },
@@ -41,11 +41,6 @@ describe('[Neighborhood] Online connection', function () {
     assert.strictEqual(a.getNeighboursIds().length, 0) // inview 0
     assert.strictEqual(b.getNeighboursIds().length, 1) // outview 1
     return new Promise((resolve, reject) => {
-      a.send(b.id, 'miaou').then(() => {
-        console.log('[test] message sent.')
-      }).catch(e => {
-        reject(e)
-      })
       a.on('receive', (id, message) => {
         assert.strictEqual(message, 'reply')
         resolve()
@@ -53,7 +48,12 @@ describe('[Neighborhood] Online connection', function () {
       b.on('receive', (id, data) => {
         console.log('[test] receive: ', id, data)
         assert.strictEqual(data, 'miaou')
-        b.send(a.id, 'reply')
+        b.send('receive', a.id, 'reply')
+      })
+      a.send('receive', b.id, 'miaou', false).then(() => {
+        console.log('[test] message sent.')
+      }).catch(e => {
+        reject(e)
       })
     })
   })

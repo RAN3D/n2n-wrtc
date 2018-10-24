@@ -49,7 +49,7 @@ describe('N2N connection', function () {
       b.on('receive', (id, data) => {
         console.log('[test] receive: ', id, data)
         assert.strictEqual(data, 'miaou')
-        b.send('receive', a.id, 'reply')
+        b.send('receive', a.id, 'reply', false)
       })
     })
   })
@@ -213,62 +213,5 @@ describe('N2N connection', function () {
     assert.strictEqual(a.view.livingOutview.size, 0)
     assert.strictEqual(b.view.livingInview.size, 0)
     assert.strictEqual(b.view.livingOutview.size, 0)
-  })
-  it('offline connection+disconnection, bridge must work in the perfect world', async () => {
-    const a = new N2N({
-      socket
-    })
-    const b = new N2N({
-      socket
-    })
-    const c = new N2N({
-      socket
-    })
-    await a.connect(b)
-    await utils.timeout(500)
-    assert.strictEqual(a.view.livingInview.size, 0)
-    assert.strictEqual(a.view.livingOutview.size, 1)
-    assert.strictEqual(b.view.livingInview.size, 1)
-    assert.strictEqual(b.view.livingOutview.size, 0)
-    await b.connect(c)
-    await utils.timeout(500)
-    assert.strictEqual(b.view.livingInview.size, 1)
-    assert.strictEqual(b.view.livingOutview.size, 1)
-    assert.strictEqual(c.view.livingInview.size, 1)
-    assert.strictEqual(c.view.livingOutview.size, 0)
-    await b.connect4u(a.id, c.id)
-    await utils.timeout(500)
-    assert.strictEqual(a.view.livingInview.size, 0)
-    assert.strictEqual(a.view.livingOutview.size, 2)
-    assert.strictEqual(b.view.livingInview.size, 1)
-    assert.strictEqual(b.view.livingOutview.size, 1)
-    assert.strictEqual(c.view.livingInview.size, 2)
-    assert.strictEqual(c.view.livingOutview.size, 0)
-  })
-  it('offline connection+disconnection, bridge cannot work with a conenction locked on dest', async () => {
-    const a = new N2N({
-      socket
-    })
-    const b = new N2N({
-      socket
-    })
-    const c = new N2N({
-      socket
-    })
-    await a.connect(b)
-    assert.strictEqual(a.view.livingInview.size, 0)
-    assert.strictEqual(a.view.livingOutview.size, 1)
-    assert.strictEqual(b.view.livingInview.size, 1)
-    assert.strictEqual(b.view.livingOutview.size, 0)
-    await b.connect(c)
-    assert.strictEqual(b.view.livingInview.size, 1)
-    assert.strictEqual(b.view.livingOutview.size, 1)
-    assert.strictEqual(c.view.livingInview.size, 1)
-    assert.strictEqual(c.view.livingOutview.size, 0)
-    b.view.lock(c.id)
-    return b.connect4u(c.id, a.id).catch(e => {
-      console.error(e)
-      return Promise.resolve()
-    })
   })
 }) // end describe

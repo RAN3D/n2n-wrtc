@@ -96,26 +96,22 @@ peer-sampling protocols.
 - [x] **Get a list of all neighbours ids (locked/ not locked)** (outview): `a.getNeighboursIds([true/false])`
 - [x] **Get only inview ids**: `a.getNeighboursInview()`
 - [x] **Get only outview ids (not locked)**: `a.getNeighboursOutview()`
-- [x] **Send** a message over Unicast:  `a.send(b.id, 'meow');`
+- [x] **Send** a message over Unicast and the received message will be emit on the specified event (here: 'receive'):  `a.send('receive', b.id, 'meow');`
 - [x] **Listen on incoming messages**: `b.on('receive', (id, message) => ...);`
 - [x] Create the internal signaling service:
   - Allow to forward offers from an inview neighbour to an outview neighbour
   - After connection new offers are transmitted by message (usefull for re-negociation)
-- [x] Create bridge connections allowing to do: `a.connectBridgeOutviewToInview(b.id, c.id)`
-  - if B and C are neighbours
-  - B need to be in your inview
-  - C need to be in your outview
-- [x] Create bridge connections allowing to do: `a.connectBridgeInviewToOutview(b.id, c.id)`
-  - if B and C are neighbours
-  - B need to be in your outview
-  - C need to be in your inview
 - [x] Create from -> to connections allowing to do: `a.connectFromUs(b.id)`
-  - It means that it increments our outview and increment the inview of the neighbor
+  - **b.id need to be in our outview**
+  - It means that it increments our outview, not the inview of the neighbor
 - [x] Create a Direct signaling service
-- [x] Create to -> from connections
+- [x] Create to -> from connections `a.connectToUs(b.id)`
+  - **b.id need to be in our outview**
   - It means that it does the same thing than from -> to but from the neighbor: `a.connectFrom(b.id)`
   - If the connection does not exist, create the connection using the direct signaling service
-- `a.connect4u(<id>, <id>)` choose for you what kind of method to apply to perform the connection for you.
+- `a.connect4u(<id>, <id>)` choose for you what kind of method to apply for performing the connection for you.
+  - Be carefull, if a bridge is done, it is a bridge where from is in your inview and dest is in your outview.
+  - For more choices, see `bridgeOO(...)` and `bridgeOI(...)` methods.
 - [ ] Encapsulate each message sent for distinguish admin messages from application messages
 - [ ] Minimize the encapsulation
 - [ ] Control the size of the object sent and create a mechanism to handle bigger files (chunkification)

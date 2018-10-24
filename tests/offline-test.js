@@ -1,30 +1,32 @@
-const Neighborhood = require('../lib').Neighborhood
+const N2N = require('../lib').N2N
 const assert = require('assert')
 
 describe('[Neighborhood] Offline connection', function () {
-  this.timeout(2 * 60 * 1000)
+  this.timeout(10 * 1000)
   it('sending a message on an offlined connection need to be successfull', async () => {
-    const a = new Neighborhood({
+    const a = new N2N({
+      n2n: {
+        id: 'a'
+      },
       socket: {
         trickle: true,
         moc: true
       }
     })
-    const b = new Neighborhood({
+    const b = new N2N({
+      n2n: {
+        id: 'b'
+      },
       socket: {
         trickle: true,
         moc: true
       }
+    })
+    a.on('out', (id) => {
+      console.log('a connected to b')
     })
     await a.connect(b)
-    assert.strictEqual(a.getNeighboursIds().length, 1)
-    assert.strictEqual(b.getNeighboursIds().length, 0)
     return new Promise((resolve, reject) => {
-      a.send(b.id, 'miaou').then(() => {
-        console.log('[test] message sent.')
-      }).catch(e => {
-        reject(e)
-      })
       a.on('receive', (id, message) => {
         assert.strictEqual(message, 'reply')
         resolve()
@@ -32,7 +34,12 @@ describe('[Neighborhood] Offline connection', function () {
       b.on('receive', (id, data) => {
         console.log('[test] receive: ', id, data)
         assert.strictEqual(data, 'miaou')
-        b.send(a.id, 'reply')
+        b.send('receive', a.id, 'reply', false)
+      })
+      a.send('receive', b.id, 'miaou', true).then(() => {
+        console.log('[test] message sent.')
+      }).catch(e => {
+        reject(e)
       })
     })
   })
