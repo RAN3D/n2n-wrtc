@@ -21,9 +21,50 @@ npm install --save n2n-wrtc
 
 ## Usage
 
-In the browser the library is available through the name n2n
+Just add in your index.html:
+```js
+<script type='text/javascript' src='./node_modules/n2n-wrtc/bin/n2n-wrtc.bundle.min.js'></script>
+```
 
-In NodeJs just do `const n2n = require('n2n')`
+Then the library is available through the name **n2n**
+
+In **NodeJs** just do `const n2n = require('n2n')`
+
+Now an example of how to using it (without the signaling server):
+
+```javascript
+const N2N = n2n.N2N // get the N2N class
+
+const a = create('a')
+const b = create('b')
+const c = create('c')
+
+async function start() {
+  await b.connect(a)
+  await c.connect(b)
+  await b.bridgeOI(a.id, c.id)
+}
+
+async().then(() => {
+  console.log('B is connected to A')
+  console.log('C is connected to B')
+  console.log('A is connected to C using B as forwarding peer.')
+})
+
+function create(id) {
+  return new N2N({
+    n2n: {
+      id
+    },
+    socket: {
+      trickle: true,
+      moc: true
+    }
+  })
+}
+```
+
+Using the signaling server you can just do `npm run signaling` and put `signaling: {room: 'myroom', address: 'http://localhost:5555'}` and then call `a.connect()` and `b.connect()` to connect b to a.
 
 ## Neighborhood
 
