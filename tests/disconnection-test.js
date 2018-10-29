@@ -1,7 +1,7 @@
 const N2N = require('../lib').N2N
 const assert = require('assert')
 
-describe('Disconnection', function () {
+describe('N2N', function () {
   this.timeout(2 * 60 * 1000)
   it('disconnection after offline conenction', async () => {
     const a = new N2N({
@@ -42,22 +42,19 @@ describe('Disconnection', function () {
     })
     const neigh = await a.connect(b)
     assert.strictEqual(neigh, b.id)
-    assert.strictEqual(a.getNeighboursIds().length, 1)
-    assert.strictEqual(b.getNeighboursIds().length, 0)
     // we ccan only have 0 neighbour in B becasue it is an inview socket
     return new Promise((resolve, reject) => {
       a.on('close', (id) => {
+        console.log('a close ', id)
         assert.strictEqual(id, b.id)
         assert.strictEqual(a.getNeighboursIds().length, 0)
         assert.strictEqual(b.getNeighboursIds().length, 0)
-        resolve()
+        // resolve()
       })
-      b.disconnect().catch(() => {
-        a.disconnect().then(async () => {
-          assert.strictEqual(a.getNeighboursIds().length, 0)
-          assert.strictEqual(b.getNeighboursIds().length, 0)
-        }).catch(e => {
-          reject(e)
+      b.disconnect(a.id).catch(e => {
+        console.log('b is disconnected', e)
+        a.disconnect().then(() => {
+          resolve()
         })
       })
     })

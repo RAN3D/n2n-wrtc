@@ -1,7 +1,7 @@
 const N2N = require('../lib').N2N
 const assert = require('assert')
 
-describe('[Neighborhood] Offline connection', function () {
+describe('[N2N] Offline connection', function () {
   this.timeout(10 * 1000)
   it('sending a message on an offlined connection need to be successfull', async () => {
     const a = new N2N({
@@ -26,6 +26,14 @@ describe('[Neighborhood] Offline connection', function () {
       console.log('a connected to b')
     })
     await a.connect(b)
+    assert.strictEqual(a.livingOutview.size, 1)
+    assert.strictEqual(a.livingInview.size, 0)
+    assert.strictEqual(a.pendingOutview.size, 0)
+    assert.strictEqual(a.pendingInview.size, 0)
+    assert.strictEqual(b.livingOutview.size, 0)
+    assert.strictEqual(b.livingInview.size, 1)
+    assert.strictEqual(b.pendingOutview.size, 0)
+    assert.strictEqual(b.pendingInview.size, 0)
     return new Promise((resolve, reject) => {
       a.on('receive', (id, message) => {
         assert.strictEqual(message, 'reply')

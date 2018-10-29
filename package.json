@@ -55,6 +55,7 @@
     "express": "^4.16.3",
     "lodash.find": "^4.6.0",
     "lodash.merge": "^4.6.1",
+    "object-sizeof": "^1.2.0",
     "short-uuid": "^3.0.0",
     "simple-peer": "^9.1.2",
     "socket.io": "^2.1.1",

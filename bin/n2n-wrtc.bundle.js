@@ -179,6 +179,10 @@ module.exports = Signaling
 const errors = __webpack_require__(/*! ../errors */ "./lib/errors/index.js")
 const events = __webpack_require__(/*! ../events */ "./lib/events.js")
 const EventEmitter = __webpack_require__(/*! events */ "./node_modules/events/events.js")
+const sizeof = __webpack_require__(/*! object-sizeof */ "./node_modules/object-sizeof/index.js")
+const lmerge = __webpack_require__(/*! lodash.merge */ "./node_modules/lodash.merge/index.js")
+const short = __webpack_require__(/*! short-uuid */ "./node_modules/short-uuid/index.js")
+const translator = short()
 
 /**
  * @class
@@ -193,22 +197,49 @@ class Socket extends EventEmitter {
    */
   constructor (options = {}) {
     super()
+    this.socketId = translator.new()
     this._debug = (__webpack_require__(/*! debug */ "./node_modules/debug/src/browser.js"))('n2n:socket')
     this._debugMessage = (__webpack_require__(/*! debug */ "./node_modules/debug/src/browser.js"))('n2n:message')
-    this.options = options
+    this.options = lmerge({ chunks: 16000 }, options)
     this.status = 'disconnected' // connected or disconnected
-    this._buffer = [] // for preventing messages arrived before the connect event
-    this.once('connect', () => {
-      this.status = 'connected'
-      if (this._buffer.length > 0) {
-        this._debugMessage('[socket] review our internal buffer of messages arrived sooner...')
-        this._buffer.forEach(message => {
-          this._receiveData(message)
-        })
-      }
-      this._debug('status: connected')
-    })
     this.on(events.socket.RECEIVE_OFFER, this._receiveOffer)
+    this.buffer = []
+    this.statistics = {
+      offerSent: 0,
+      offerReceived: 0
+    }
+  }
+
+  /**
+   * Review the buffer of data sent
+   * @return {void}
+   */
+  reviewBuffer () {
+    let data
+    while ((data = this.buffer.shift())) {
+      this.send(data)
+    }
+  }
+
+  /**
+   * Signal to the supervisor of the socket that this socket is conencted and review the internal buffer
+   * @return {void}
+   */
+  signalConnect () {
+    this.status = 'connected'
+    this.emit('connect')
+    this.reviewBuffer()
+  }
+
+  /**
+   * Signal to the supervisor of the socket that this socket is disconnected
+   * @return {void}
+   */
+  signalDisconnect () {
+    if (this.status === 'connected') {
+      this.status = 'disconnected'
+      this.emit('close')
+    }
   }
 
   /**
@@ -226,7 +257,14 @@ class Socket extends EventEmitter {
    * @return {void}       [description]
    */
   emitOffer (offer) {
-    this.emit(events.socket.EMIT_OFFER, offer)
+    this.statistics.offerSent++
+    this._debug('[socket:%s] Send an accepted offer (status=%s): ', this.socketId, this.status, offer, this.statistics)
+    if (this.status === 'connected') {
+      console.log('The socket is connected but you continue to emit offers...', offer, this.status, this.__socket._channel.readyState)
+      this.emit(events.socket.EMIT_OFFER_RENEGOCIATE, offer)
+    } else {
+      this.emit(events.socket.EMIT_OFFER, offer)
+    }
   }
 
   /**
@@ -259,12 +297,16 @@ class Socket extends EventEmitter {
    * @return {void}
    */
   _receiveData (data) {
-    if (this.status !== 'connected') {
-      this._debugMessage('[socket] buffer the message the socket is not connected yet...')
-      this._buffer.push(data)
-    } else {
-      this.emit('data', data)
+    if (this.status === 'connecting') {
+      this.signalConnect()
     }
+    this._debug('[socket:%s] receiving data, size=%f', this.socketId, sizeof(data))
+    this.emit('data', data)
+  }
+
+  _manageErrors (...args) {
+    this._debug('Error on the socket: ', ...args)
+    this.emit('error', ...args)
   }
 
   /**
@@ -285,9 +327,7 @@ class Socket extends EventEmitter {
   async connect (options = this.options) {
     this.status = 'connecting'
     return this._connect(options).then((res) => {
-      this.status = 'connected'
-      this._debug('status: connected')
-      this.emit('connect')
+      this.signalConnect()
       return res
     }).catch(e => e)
   }
@@ -299,7 +339,19 @@ class Socket extends EventEmitter {
    * @return {Promise}         Promise resolved when the message is sent
    */
   async send (data, options) {
-    return this._send(data, options)
+    const size = sizeof(data)
+    this._debug('[socket:%s] Data size sent (max allowed=%f Bytes): %f', this.socketId, this.options.chunks, size)
+    if (size > this.options.chunks) {
+      return Promise.reject(new Error('Your data is too big. Max allowed: ' + this.options.chunks))
+    } else {
+      if (this.status === 'connected') {
+        return this._send(data, options)
+      } else if (this.status === 'connecting') {
+        this.buffer.push(data)
+      } else if (this.status === 'disconnected') {
+        throw new Error('socket disconnected.')
+      }
+    }
   }
 
   /**
@@ -388,7 +440,8 @@ module.exports = function (peer) {
 module.exports = {
   socket: {
     RECEIVE_OFFER: 'socket-ro',
-    EMIT_OFFER: 'socket-eo'
+    EMIT_OFFER: 'socket-eo',
+    EMIT_OFFER_RENEGOCIATE: 'socket-eo-r'
   },
   signaling: {
     RECEIVE_OFFER: 'signalig-ro',
@@ -438,7 +491,6 @@ module.exports = {
 
 module.exports = {
   N2N: __webpack_require__(/*! ./main */ "./lib/main.js"),
-  Neighborhood: __webpack_require__(/*! ./neighborhood */ "./lib/neighborhood/index.js"),
   sockets: __webpack_require__(/*! ./sockets */ "./lib/sockets/index.js"),
   signaling: __webpack_require__(/*! ./signaling */ "./lib/signaling/index.js"),
   api: __webpack_require__(/*! ./api */ "./lib/api/index.js")
@@ -454,133 +506,157 @@ module.exports = {
 /*! no static exports found */
 /***/ (function(module, exports, __webpack_require__) {
 
-const Neighborhood = __webpack_require__(/*! ./neighborhood */ "./lib/neighborhood/index.js")
 const lmerge = __webpack_require__(/*! lodash.merge */ "./node_modules/lodash.merge/index.js")
 const errors = __webpack_require__(/*! ./errors */ "./lib/errors/index.js")
-const short = __webpack_require__(/*! short-uuid */ "./node_modules/short-uuid/index.js")
 const events = __webpack_require__(/*! ./events */ "./lib/events.js")
+const short = __webpack_require__(/*! short-uuid */ "./node_modules/short-uuid/index.js")
 const translator = short()
 const EventEmitter = __webpack_require__(/*! events */ "./node_modules/events/events.js")
 const BridgeIO = __webpack_require__(/*! ./signaling */ "./lib/signaling/index.js").bridgeIO
 const BridgeOO = __webpack_require__(/*! ./signaling */ "./lib/signaling/index.js").bridgeOO
 const BridgeOI = __webpack_require__(/*! ./signaling */ "./lib/signaling/index.js").bridgeOI
 const DirectSignaling = __webpack_require__(/*! ./signaling */ "./lib/signaling/index.js").direct
+const OfflineSignaling = __webpack_require__(/*! ./signaling */ "./lib/signaling/index.js").offline
+const OnlineSignaling = __webpack_require__(/*! ./signaling */ "./lib/signaling/index.js").online
+const View = __webpack_require__(/*! ./view */ "./lib/view.js")
 
 class N2N extends EventEmitter {
   constructor (options) {
     super()
+    const id = translator.new()
     this.options = lmerge({
       n2n: {
         protocol: 'n2n',
-        id: translator.new(),
-        timeout: 10000
-      }
-    }, options)
-    this._debug = (__webpack_require__(/*! debug */ "./node_modules/debug/src/browser.js"))('n2n:n2n')
-    this._debugMessage = (__webpack_require__(/*! debug */ "./node_modules/debug/src/browser.js"))('n2n:message')
-    this.id = this.options.n2n.id
-    this.viewOptions = lmerge(this.options, {
-      neighborhood: {
-        id: this.id
-      },
-      signaling: {
-        id: this.id
+        id,
+        timeout: 10000,
+        SocketClass: __webpack_require__(/*! ./sockets */ "./lib/sockets/index.js").simplepeer
       },
       socket: {
         objectMode: false
-      }
-    })
+      },
+      signaling: lmerge({ room: 'default', id }, __webpack_require__(/*! ./signaling/server/config.json */ "./lib/signaling/server/config.json"))
+    }, options)
+    // debug log
+    this._debug = (__webpack_require__(/*! debug */ "./node_modules/debug/src/browser.js"))('n2n:n2n')
+    this._debugMessage = (__webpack_require__(/*! debug */ "./node_modules/debug/src/browser.js"))('n2n:message')
+    // set the id, pass in option or by default an initialized one
+    this.id = this.options.n2n.id
+    // init the pending(inview/outview)
+    this.pendingInview = new Map()
+    this.pendingOutview = new Map()
+    // init the living(inview/outview)
+    this.livingInview = new Map()
+    this.livingOutview = new View()
+    // set an internal event bus
     this.events = new EventEmitter()
-    this.view = options.view || new Neighborhood(this.viewOptions)
-    this.view.on('receive', (id, message) => {
-      this.emit(message.protocol, id, message.msg)
+    // listeners
+    this.on('lock', (id) => {
+      this._debug('[%s] a connection has been locked: %s', this.id, id)
+    })
+    this.on('unlock', (id) => {
+      this._debug('[%s] a connection has been unlocked: %s', this.id, id)
     })
     this.on(this.options.n2n.protocol, (id, message) => {
       this._debugMessage('[%s/%s] receive a message from %s:', this.id, this.options.n2n.protocol, id, message)
       this._receive(id, message)
     })
-    this.view.on('in', (id, outview) => {
-      this.emit('in', id, outview)
-    })
-    this.view.on('out', (id, outview) => {
-      this.emit('out', id, outview)
-    })
-    this.view.on('close_in', id => {
-      this.emit('close', id, false)
-      this.emit('close_in', id)
-    })
-    this.view.on('close_out', id => {
-      this.emit('close', id, true)
-      this.emit('close_out', id)
-    })
-
+    // set all signaling services
     this.signaling = {
       bridgeIO: new BridgeIO(this.options.signaling, this),
       bridgeOO: new BridgeOO(this.options.signaling, this),
       bridgeOI: new BridgeOI(this.options.signaling, this),
-      direct: new DirectSignaling(this.options.signaling, this)
+      direct: new DirectSignaling(this.options.signaling, this),
+      offline: new OfflineSignaling(this.options.signaling, this),
+      online: new OnlineSignaling(this.options.signaling, this)
     }
-
-    this.signaling.direct.on(events.signaling.RECEIVE_OFFER, ({ jobId, initiator, destination, offerType, offer }) => {
-      // console.log('[receive] receive an offer to emit to the socket... ', jobId, this.view.livingInview.has(initiator), this.view.livingOutview.exist(initiator), this.getNeighboursOutview().map(p => p.id), this.getNeighboursInview().map(p => p.id))
-      if (!initiator || !destination || !offer || !offerType) throw new Error('PLEASE REPORT, Problem with the offline signaling service. provide at least initiator, destination, type a,d the offer as properties in the object received')
-      // do we have the initiator in our list of connections?
-      if (!this.view.livingInview.has(initiator) && offerType === 'new') {
-        // we do have the socket for the moment, create it
-        this.view.createNewSocket(this.options.socket, initiator, false)
-        // ATTENTION: LISTENERS HAVE TO BE DECLARED ONCE!
-        this.view.livingInview.get(initiator).socket.on(events.socket.EMIT_OFFER, (socketOffer) => {
-          const off = {
-            jobId,
-            initiator,
-            destination,
-            offer: socketOffer,
-            offerType: 'back'
-          }
-          this.signaling.direct.sendOfferBack(off)
-          // console.log('%s emitted accepted offers: ', jobId, off)
-        })
-        // WE RECEIVE THE OFFER ON THE ACCEPTOR
-        // console.log('[first/new] receive an offer to emit to the socket... ', jobId)
-        this.view.livingInview.get(initiator).socket.emit(events.socket.RECEIVE_OFFER, offer)
-      } else {
-        // now if it is a new offer, give it to initiator socket, otherwise to destination socket
-        if (offerType === 'new') {
-          try {
-            // WE RECEIVE THE OFFER ON THE ACCEPTOR
-            // console.log('[acceptor] receive an offer to accept to emit to the socket... ', jobId)
-            this.view.livingInview.get(initiator).socket.emit(events.socket.RECEIVE_OFFER, offer)
-          } catch (e) {
-            console.error('PLEASE REPORT THIS ISSUE: ', e)
-          }
-        } else if (offerType === 'back') {
-          try {
-            // WE RECEIVE THE ACCEPTED OFFER ON THE INITIATOR
-            // console.log('[initiator] receive an offer to accept to emit to the socket... ', jobId)
-            if (this.view.livingOutview.isIn(destination) && this.view.livingOutview.get(destination).socket.status !== 'connected') {
-              this.view.livingOutview.get(destination).socket.emit(events.socket.RECEIVE_OFFER, offer)
-            }
-          } catch (e) {
-            console.error('PLEASE REPORT THIS ISSUE: ', e)
-          }
-        }
-      }
-    })
   }
-
   /**
-   * Connect to a peer using a signaling service. If the first parameter is a N2N instance
-   * it connects directly us to the instance using an offline signaling service.
-   * Otherwise it uses a signaling services provided by Neighborhood.
-   * @param  {N2N}  n2n       N2N instance you want to connect with.
-   * @param  {Signaling}  signaling You can provide your own signaling service (dont forget to add a listener to listen for incoming messages, (see our online/offline signaling to create your own.))
-   * @return {Promise}  Resolved when the connection is successfully done, rejected otherwise.
+   * Connect us to a neighbor using a signaling service, if neighbor is null we use an online signaling service to connect the neighbor to an already existing network. If we are alone, meaning that the peer id we receive using the signaling service is null, we are automatically connected. If the neighbor is an instance of N2N, we directly connect them through an offline signaling service.
+   * @param  {N2N}  neighbor                          N2N instance we want to connect to directly
+   * @param  {Signaling}  [signaling=this.signaling.online] The online service we want to use. Dont forget to active the listener to receive incoming messages
+   * @return {Promise} This method is resolved when the connection is successfully done, otherwise rejected
    */
-  async connect (n2n, signaling) {
-    if (n2n) {
-      return this.view.connect(n2n.view, signaling)
+  async connect (neighbor, signaling = this.signaling.online) {
+    if (neighbor) {
+      if (this.livingOutview.has(neighbor.id)) {
+        return this.increaseOccurences(neighbor.id).then(() => {
+          return neighbor.id
+        })
+      } else if (!this.pendingOutview.has(neighbor.id)) {
+        return new Promise(async (resolve, reject) => {
+          signaling = this.signaling.offline
+          await signaling.connect()
+          const jobId = translator.new()
+          const socket = this.createNewSocket(this.options.socket, neighbor.id, true)
+          socket.on('error', (error) => {
+            this._manageError(error, neighbor.id, true, reject)
+          })
+          socket.on(events.socket.EMIT_OFFER, (offer) => {
+            neighbor.signaling.offline.receiveOffer({
+              jobId,
+              initiator: this.id,
+              destination: neighbor.id,
+              offer,
+              type: 'new'
+            })
+          })
+          // simulate the signaling server by directly listening on the neighbor on emitted offers
+          neighbor.signaling.offline.on(events.signaling.EMIT_OFFER, (offer) => {
+            this.signaling.offline.emit(events.signaling.RECEIVE_OFFER, offer)
+          })
+          socket.connect().then(() => {
+            resolve(neighbor.id)
+            // neighbor.signaling.offline.removeListener(events.signaling.EMIT_OFFER)
+          }).catch(e => {
+            reject(e)
+          })
+        })
+      } else {
+        return Promise.reject(new Error('The connection is already pending. Retry after the first connection was created.'))
+      }
     } else {
-      return this.view.connect(undefined, signaling)
+      return new Promise((resolve, reject) => {
+        signaling.connect(this.options.signaling.room).then(async () => {
+          const neighborId = await signaling.getNewPeer({
+            initiator: this.id,
+            room: this.options.signaling.room
+          })
+          if (neighborId) {
+            if (this.livingOutview.has(neighborId)) {
+              this.increaseOccurences(neighborId).then(() => {
+                resolve(neighborId)
+              }).catch(e => {
+                reject(e)
+              })
+            } else if (!this.pendingOutview.has(neighborId)) {
+              const jobId = translator.new()
+              const socket = this.createNewSocket(this.options.socket, neighborId, true)
+              socket.on('error', (error) => {
+                this._manageError(error, neighborId, true, reject)
+              })
+              socket.on(events.socket.EMIT_OFFER, (offer) => {
+                const off = {
+                  jobId,
+                  initiator: this.id,
+                  destination: neighborId,
+                  offer,
+                  type: 'new'
+                }
+                signaling.sendOffer(off)
+              })
+              socket.connect().then(() => {
+                resolve(neighborId)
+              }).catch(reject)
+            } else {
+              return Promise.reject(new Error('The connection is already pending. Retry after the first connection was created.'))
+            }
+          } else {
+            resolve(neighborId)
+          }
+        }).catch(e => {
+          reject(e)
+        })
+      })
     }
   }
 
@@ -591,8 +667,8 @@ class N2N extends EventEmitter {
    * 'from' is null and 'to' is string: add an outview occurence (an arc)
    * 'to' is null and 'from' is string: add an outview from 'from'
    * 'from' is string and 'to' is string: bridge, add an arc (or create the connection) between 'from' and 'to' exchanging offers through us (not using a signaling server)
-   *  For the bridge: 'from' needs to be in our inview our inview and 'to' needs to be in our outview.
-   *  For more choice, use bridgeOO or bridgeOI respectively bridge outview to outview and bridge outview to inview
+   *  For the bridge: 'from' and 'to' needs to be in our outview.
+   *  For more choice, use bridgeIO or bridgeOI respectively bridge inview to outview and bridge outview to inview
    * @param  {String|null}  [from=null] peer id
    * @param  {String|null}  [to=null]   peer id
    * @return {Promise} resolved if the promise of chosen case is resolved, otherwise reject with the appropriate method
@@ -601,22 +677,23 @@ class N2N extends EventEmitter {
     if (from === this.id) from = null
     if (to === this.id) to = null
     if (from && typeof from === 'string' && to && typeof to === 'string') {
-      console.log('[%s] %s -bridgeIO> %s !', this.id, from, to)
-      return this.bridgeIO(from, to)
+      this._debug('[%s] %s -bridgeIO> %s !', this.id, from, to)
+      return this.bridgeOO(from, to)
     } else if (from && typeof from === 'string' && to === null) {
       // from to to us
-      console.log('[%s] %s -> %s !', this.id, from, this.id)
+      this._debug('[%s] %s -> %s !', this.id, from, this.id)
       return this.connectToUs(from)
     } else if (to && typeof to === 'string' && from === null) {
       // connection from us to to
-      if (this.view.livingOutview.has(to)) {
-        console.log('[%s] %s -> %s !', this.id, this.id, to)
+      if (this.livingOutview.has(to)) {
+        this._debug('[%s] %s -> %s !', this.id, this.id, to)
         return this.connectFromUs(to)
       } else {
-        throw new Error(to + ' need to be in our outview.')
+        console.log('Need to be in our outview')
+        return Promise.reject(new Error(to + ' need to be in our outview.'))
       }
     } else {
-      throw errors.nyi()
+      return Promise.reject(errors.nyi())
     }
   }
 
@@ -625,12 +702,8 @@ class N2N extends EventEmitter {
    * @param  {String}  peerId peer id to connect with
    * @return {Promise} Resolve when successfully established. Rject otherwise
    */
-  async connectFromUs (peerId) {
-    return this.view.increaseOccurences(peerId, true)
-    // this.send(this.options.n2n.protocol, peerId, {
-    //   type: events.neighborhood.OCC_INC,
-    //   id: this.id
-    // })
+  async connectFromUs (peerId, outview = true) {
+    return this.increaseOccurences(peerId, true)
   }
 
   /**
@@ -642,85 +715,7 @@ class N2N extends EventEmitter {
    * @return {Promise} Resolve when the connection is successfully established. Reject otherwise, error or timeout, or peer not found.
    */
   async connectToUs (peerId, timeout = this.options.n2n.timeout) {
-    // console.log('connectToUs %s', peerId, this.view.livingOutview.isIn(peerId), this.view.livingInview.has(peerId))
-    if (!this.view.livingOutview.isIn(peerId)) {
-      throw errors.peerNotFound(peerId)
-    } else {
-      return new Promise((resolve, reject) => {
-        // first lock the connection
-        // this.view.lock(peerId)
-        const tout = setTimeout(() => {
-          // this.view.unlock(peerId)
-          reject(new Error('timeout'))
-        }, timeout)
-        // first send a message to peerId
-        const jobId = translator.new()
-        this.events.once(jobId, (msg) => {
-          if (msg.response) {
-            // means yes, connection created
-            // this.view.unlock(peerId)
-            clearTimeout(tout)
-            resolve()
-          } else {
-            clearTimeout(tout)
-            // means no
-            reject(new Error('connection cannot be established. Somthing wrong happened'))
-          }
-        })
-        this.send(this.options.n2n.protocol, peerId, {
-          type: events.n2n.CONNECT_TO_US,
-          jobId,
-          id: this.id
-        }).catch(e => {
-          // this.view.unlock(peerId)
-          reject(e)
-        })
-      })
-    }
-  }
-  async _connectToUs ({ type, id, jobId }) {
-    const peerId = id
-    // console.log('_connecteToUs: ', peerId, this.view.livingOutview.has(peerId), this.view.livingInview.has(peerId), jobId)
-    if (!this.view.livingOutview.isIn(peerId) && this.view.livingInview.has(peerId)) {
-      return new Promise((resolve, reject) => {
-        // we need to create the connection by exchanging offer between the two peers
-        const tout = setTimeout(() => {
-          // console.log('error:_connecteToUs: ', peerId, this.view.livingOutview.has(peerId), this.view.livingInview.has(peerId), jobId)
-          reject(new Error('timeout'))
-        }, this.options.n2n.timeout)
-        if (this.view.livingOutview.isIn(peerId)) throw new Error('please report!! cannot create a socket if the peer is already in our outview')
-        const socket = this.view.createNewSocket(this.options.socket, peerId, true)
-        socket.on('error', (error) => {
-          this.view._manageError(error, peerId, true, reject)
-        })
-        socket.on(events.socket.EMIT_OFFER, (offer) => {
-          const off = {
-            jobId,
-            initiator: this.id,
-            destination: peerId,
-            offer,
-            offerType: 'new'
-          }
-          // console.log('%s offer sent:', jobId, off)
-          this.signaling.direct.sendOfferTo(off)
-        })
-        socket.connect().then(() => {
-          clearTimeout(tout)
-          this.view.increaseOccurences(peerId).then(() => {
-            resolve()
-          }).catch(e => {
-            reject(e)
-          })
-        }).catch(e => {
-          clearTimeout(tout)
-          reject(e)
-        })
-      })
-    } else if (this.view.livingOutview.isIn(peerId)) {
-      return this.connectFromUs(peerId)
-    } else {
-      throw new Error('Not allowed. Are you trying to beat me?')
-    }
+    return this.signaling.direct.connectToUs(peerId, timeout)
   }
 
   /**
@@ -758,60 +753,6 @@ class N2N extends EventEmitter {
   }
 
   /**
-   * @description Disconnect all or one arc.
-   * @param  {String}  userId [description]
-   * @return {Promise}        [description]
-   */
-  disconnect (peerId) {
-    return this.view.disconnect(peerId)
-  }
-
-  /**
-   * @description Get the list of all inviews sockets including occurences and the peer id connected with.
-   * (Warning) occurences and lock are inconsistent because you have no control on your inview
-   * @return {Array<Object>} Array of object [{peer: {socket, occurences, lock}, id}]
-   */
-  getNeighboursInview () {
-    return this.view.getNeighboursInview()
-  }
-
-  /**
-   * @description Get the list of all outviews sockets including occurences and lock and the peer id connected with.
-   * Contrary to your inview, Occurences and lock are consistent because you have the control on your outview
-   * @return {Array<Object>} Array of object [{peer: {socket, occurences, lock}, id}]
-   */
-  getNeighboursOutview () {
-    return this.view.getNeighboursOutview()
-  }
-
-  /**
-   * @description Get all reachable neighbours including socket, occurences, lock and ids
-   * If the connection is totally locked you cant see it. Pass true as options if you want all neighbours even if connections are locked.
-   * @param {Boolean} [all=false] if true, return all neighbours even if they are locked
-   * @return {Array<Object>} Array of object [{peer: {socket, occurences, lock}, id}]
-   */
-  getNeighbours (all = false) {
-    return this.view.getNeighbours(all)
-  }
-
-  /**
-   * @description Return all ids of reachable peers (outview)
-   * @param {Boolean} [all=false] if true, return all neighbours ids even if they are locked
-   * @return {Array<String>}
-   */
-  getNeighboursIds (all = false) {
-    return this.view.getNeighboursIds(all)
-  }
-
-  /**
-   * @description Return a list of arcs inview/outview for the peer in an array of object {source: <string>, dest: <string>, outview: <boolean>}
-   * @return {Array<Object>} [{source: <string>, dest: <string>, outview: <boolean>}, ...]
-   */
-  getArcs () {
-    return this.view.getArcs()
-  }
-
-  /**
    * @description Send a message to the peer specified.
    * Firstly we try to send in the outview, then we try to send the message in the inview.
    * Then we throw an error if the peer is not found in the outview nor the inview.
@@ -823,475 +764,28 @@ class N2N extends EventEmitter {
    */
   async send (protocol = 'receive', id, msg, outview = true) {
     const message = { protocol, msg }
-    this._debugMessage('[%s/n2n] send a message to %s:', this.id, id, message)
-    return this.view.send(id, message, outview)
-  }
-  _receive (id, message) {
-    if (message && message.type && message.id && message.type === events.n2n.CONNECT_TO_US) {
-      this._connectToUs(message).then(() => {
-        this.send(this.options.n2n.protocol, id, {
-          type: events.n2n.RESPONSE,
-          jobId: message.jobId,
-          response: true
-        }, false)
-      }).catch(e => {
-        this.send(this.options.n2n.protocol, id, {
-          type: events.n2n.RESPONSE,
-          jobId: message.jobId,
-          response: false
-        }, false)
-      })
-    } else if (message && message.type && message.response && message.type === events.n2n.RESPONSE) {
-      this.events.emit(message.jobId, message)
-    } else if (message && message.type && message.type === events.n2n.DIRECT_TO) {
-      this.signaling.direct.receiveOffer(message)
-    } else if (message && message.type && message.type === events.n2n.DIRECT_BACK) {
-      this.signaling.direct.receiveOffer(message)
-    } else if (message && message.type && message.type === events.n2n.bridgeIO.BRIDGE) {
-      this.signaling.bridgeIO._bridge(id, message)
-    } else if (message && message.type && message.type === events.n2n.bridgeIO.BRIDGE_FORWARD) {
-      this.signaling.bridgeIO.forward(message)
-    } else if (message && message.type && message.type === events.n2n.bridgeIO.BRIDGE_FORWARD_BACK) {
-      this.signaling.bridgeIO.forwardBack(message)
-    } else if (message && message.type && message.type === events.n2n.bridgeIO.BRIDGE_FORWARD_RESPONSE) {
-      this.signaling.bridgeIO.receiveOffer(message)
-    } else if (message && message.type && message.type === events.n2n.bridgeOO.BRIDGE) {
-      this.signaling.bridgeOO._bridge(id, message)
-    } else if (message && message.type && message.type === events.n2n.bridgeOO.BRIDGE_FORWARD) {
-      this.signaling.bridgeOO.forward(message)
-    } else if (message && message.type && message.type === events.n2n.bridgeOO.BRIDGE_FORWARD_BACK) {
-      this.signaling.bridgeOO.forwardBack(message)
-    } else if (message && message.type && message.type === events.n2n.bridgeOO.BRIDGE_FORWARD_RESPONSE) {
-      this.signaling.bridgeOO.receiveOffer(message)
-    } else if (message && message.type && message.type === events.n2n.bridgeOI.BRIDGE) {
-      this.signaling.bridgeOI._bridge(id, message)
-    } else if (message && message.type && message.type === events.n2n.bridgeOI.BRIDGE_FORWARD) {
-      this.signaling.bridgeOI.forward(message)
-    } else if (message && message.type && message.type === events.n2n.bridgeOI.BRIDGE_FORWARD_BACK) {
-      this.signaling.bridgeOI.forwardBack(message)
-    } else if (message && message.type && message.type === events.n2n.bridgeOI.BRIDGE_FORWARD_RESPONSE) {
-      this.signaling.bridgeOI.receiveOffer(message)
-    }
-  }
-}
-
-module.exports = N2N
-
-
-/***/ }),
-
-/***/ "./lib/neighborhood/index.js":
-/*!***********************************!*\
-  !*** ./lib/neighborhood/index.js ***!
-  \***********************************/
-/*! no static exports found */
-/***/ (function(module, exports, __webpack_require__) {
-
-module.exports = __webpack_require__(/*! ./neighborhood */ "./lib/neighborhood/neighborhood.js")
-
-
-/***/ }),
-
-/***/ "./lib/neighborhood/neighborhood.js":
-/*!******************************************!*\
-  !*** ./lib/neighborhood/neighborhood.js ***!
-  \******************************************/
-/*! no static exports found */
-/***/ (function(module, exports, __webpack_require__) {
-
-const short = __webpack_require__(/*! short-uuid */ "./node_modules/short-uuid/index.js")
-const translator = short()
-const lmerge = __webpack_require__(/*! lodash.merge */ "./node_modules/lodash.merge/index.js")
-const OfflineSignaling = __webpack_require__(/*! ../signaling */ "./lib/signaling/index.js").offline
-const OnlineSignaling = __webpack_require__(/*! ../signaling */ "./lib/signaling/index.js").online
-const events = __webpack_require__(/*! ../events */ "./lib/events.js")
-const errors = __webpack_require__(/*! ../errors */ "./lib/errors/index.js")
-const EventEmitter = __webpack_require__(/*! events */ "./node_modules/events/events.js")
-
-/**
- * @class
- * @classdesc Neighborhood class, it contains a list of sockets. These sockets are direct neighbors of this class.
- * it allows offline connection and online connections
- * @extends Neighborhood
- */
-class Neighborhood extends EventEmitter {
-  constructor (options) {
-    const id = translator.new()
-    options = lmerge({
-      neighborhood: {
-        id,
-        SocketClass: __webpack_require__(/*! ../sockets */ "./lib/sockets/index.js").simplepeer,
-        timeoutDisconnect: 20000
-      },
-      socket: {
-        objectMode: false
-      },
-      signaling: lmerge({ room: 'default', id }, __webpack_require__(/*! ../signaling/server/config.json */ "./lib/signaling/server/config.json"))
-    }, options)
-    super()
-    this._debug = (__webpack_require__(/*! debug */ "./node_modules/debug/src/browser.js"))('n2n:neighborhood')
-    this._debugMessage = (__webpack_require__(/*! debug */ "./node_modules/debug/src/browser.js"))('n2n:message')
-    this.options = options
-    this.__view = (__webpack_require__(/*! ./view */ "./lib/neighborhood/view.js"))
-    const ViewClass = this.__view
-    this.livingInview = new Map()
-    this.livingOutview = new ViewClass()
-    this._debug('Options set: ', this.options)
-    this.id = this.options.neighborhood.id
-    this.signaling = {
-      offline: new OfflineSignaling(this.options.signaling),
-      online: new OnlineSignaling(this.options.signaling)
-    }
-    this.on('lock', (id) => {
-      this._debug('[%s] a connection has been locked: %s', this.id, id)
-    })
-    this.on('unlock', (id) => {
-      this._debug('[%s] a connection has been unlocked: %s', this.id, id)
-    })
-    this.signaling.offline.on(events.signaling.RECEIVE_OFFER, ({ initiator, destination, type, offer }) => {
-      if (!initiator || !destination || !offer || !type) throw new Error('PLEASE REPORT, Problem with the offline signaling service. provide at least initiator, destination, type a,d the offer as properties in the object received')
-      // do we have the initiator in our list of connections?
-      if (!this.livingInview.has(initiator) && type === 'new') {
-        // we do have the socket for the moment, create it
-        this.createNewSocket(this.options.socket, initiator, false)
-        // ATTENTION: LISTENERS HAVE TO BE DECLARED ONCE!
-        this.livingInview.get(initiator).socket.on(events.socket.EMIT_OFFER, (socketOffer) => {
-          this.signaling.offline.sendOffer({
-            initiator,
-            destination,
-            offer: socketOffer,
-            type: 'back'
-          })
-        })
-        // WE RECEIVE THE OFFER ON THE ACCEPTOR
-        this.livingInview.get(initiator).socket.emit(events.socket.RECEIVE_OFFER, offer)
-      } else {
-        // now if it is a new offer, give it to initiator socket, otherwise to destination socket
-        if (type === 'new') {
-          try {
-            // WE RECEIVE THE OFFER ON THE ACCEPTOR
-            this.livingInview.get(initiator).socket.emit(events.socket.RECEIVE_OFFER, offer)
-          } catch (e) {
-            console.error('PLEASE REPORT THIS ISSUE: ', e)
-          }
-        } else if (type === 'back') {
-          try {
-            // WE RECEIVE THE ACCEPTED OFFER ON THE INITIATOR
-            if (this.livingOutview.isIn(destination) && this.livingOutview.get(destination).socket.status !== 'connected') {
-              this.livingOutview.get(destination).socket.emit(events.socket.RECEIVE_OFFER, offer)
-            }
-          } catch (e) {
-            console.error('PLEASE REPORT THIS ISSUE: ', e)
-          }
-        }
-      }
-    })
-
-    this.signaling.online.on(events.signaling.RECEIVE_OFFER, ({ initiator, destination, type, offer }) => {
-      if (!initiator || !destination || !offer || !type) throw new Error('PLEASE REPORT, Problem with the offline signaling service. provide at least initiator, destination, type a,d the offer as properties in the object received')
-      if (!this.livingInview.has(initiator) && type === 'new') {
-        // we do have the socket for the moment, create it
-        this.createNewSocket(this.options.socket, initiator, false)
-        // ATTENTION: LISTENERS HAVE TO BE DECLARED ONCE!
-        this.livingInview.get(initiator).socket.on(events.socket.EMIT_OFFER, (socketOffer) => {
-          this.signaling.online.sendOffer({
-            initiator,
-            destination,
-            offer: socketOffer,
-            type: 'back'
-          })
-        })
-        this.livingInview.get(initiator).socket.emit(events.socket.RECEIVE_OFFER, offer)
-      } else {
-        // now if it is a new offer, give it to initiator socket, otherwise to destination socket
-        if (type === 'new') {
-          try {
-            this.livingInview.get(initiator).socket.emit(events.socket.RECEIVE_OFFER, offer)
-          } catch (e) {
-            console.error('PLEASE REPORT THIS ISSUE: ', e)
-          }
-        } else if (type === 'back') {
-          try {
-            if (this.livingOutview.isIn(destination) && this.livingOutview.get(destination).socket.status !== 'connected') {
-              this.livingOutview.get(destination).socket.emit(events.socket.RECEIVE_OFFER, offer)
-            }
-          } catch (e) {
-            console.error('PLEASE REPORT THIS ISSUE: ', e)
-          }
-        }
-      }
-    })
-  }
-
-  /**
-   * Connect us to a neighbor using a signaling service, if neighbor is null we use an online signaling service to connect the neighbor to an already existing network. If we are alone, meaning that the peer id we receive using the signaling service is null, we are automatically connected. If the neighbor is an instance of Neighborhood, we directly connect them through an offline signaling service.
-   * @param  {Neighborhood}  neighbor                          Neighborhood instance we want to connect to directly
-   * @param  {Signaling}  [signaling=this.signaling.online] The online service we want to use. Dont forget to active the listener to receive incoming messages
-   * @return {Promise} This method is resolved when the connection is successfully done, otherwise rejected
-   */
-  async connect (neighbor, signaling = this.signaling.online) {
-    // get peers id and check if we already have the neighbor connection
-    // yes? => increment occurences
-    // no? => create it
-    if (neighbor) {
-      if (this.livingOutview.has(neighbor.id)) {
-        return this.increaseOccurences(neighbor.id).then(() => {
-          // we only send the message in case when the connection is already here
-          // return this.send(neighbor.id, {
-          //   type: events.neighborhood.OCC_INC,
-          //   id: this.id
-          // }).then(() => {
-          return neighbor.id
-          // })
-        })
-      } else {
-        signaling = this.signaling.offline
-        return new Promise(async (resolve, reject) => {
-          await signaling.connect()
-          const socket = this.createNewSocket(this.options.socket, neighbor.id, true)
-          socket.on('error', (error) => {
-            this._manageError(error, neighbor.id, true, reject)
-          })
-          socket.on(events.socket.EMIT_OFFER, (offer) => {
-            neighbor.signaling.offline.receiveOffer({
-              initiator: this.id,
-              destination: neighbor.id,
-              offer,
-              type: 'new'
-            })
-          })
-          // simulate the signaling server by directly listening on the neighbor on emitted offers
-          neighbor.signaling.offline.on(events.signaling.EMIT_OFFER, (offer) => {
-            this.signaling.offline.emit(events.signaling.RECEIVE_OFFER, offer)
-          })
-          socket.connect().then(() => {
-            // neighbor.signaling.offline.removeListener(events.signaling.EMIT_OFFER)
-            this.increaseOccurences(neighbor.id, true).then(() => {
-              resolve(neighbor.id)
-            })
-          }).catch(e => {
-            reject(e)
-          })
-        })
-      }
-    } else {
-      return new Promise((resolve, reject) => {
-        signaling.connect(this.options.signaling.room).then(async () => {
-          const neighborId = await signaling.getNewPeer({
-            initiator: this.id,
-            room: this.options.signaling.room
-          })
-          if (neighborId) {
-            if (this.livingOutview.has(neighborId)) {
-              this.increaseOccurences(neighborId).then(() => {
-                // this.send(neighborId, {
-                //   type: events.neighborhood.OCC_INC,
-                //   id: this.id
-                // }).then(() => {
-                resolve(neighborId)
-                // }).catch(e => {
-                //   reject(e)
-                // })
-              }).catch(e => {
-                reject(e)
-              })
-            } else {
-              const socket = this.createNewSocket(this.options.socket, neighborId, true)
-              socket.on('error', (error) => {
-                this._manageError(error, neighborId, true, reject)
-              })
-              socket.on(events.socket.EMIT_OFFER, (offer) => {
-                const off = {
-                  initiator: this.id,
-                  destination: neighborId,
-                  offer,
-                  type: 'new'
-                }
-                signaling.sendOffer(off)
-              })
-              socket.connect().then(() => {
-                this.increaseOccurences(neighborId, true).then(() => {
-                  resolve(neighborId)
-                })
-              }).catch(reject)
-            }
-          } else {
-            resolve(neighborId)
-          }
-        }).catch(e => {
-          reject(e)
-        })
-      })
-    }
-  }
-
-  /**
-   * Lock an outview connection by incrementing the lock value of a socket
-   * @param  {String}  peerId peer id to lock
-   * @return {Boolean} False if not locked, true when locked.
-   */
-  lock (peerId) {
-    if (!this.livingOutview.has(peerId)) {
-      return false
-    } else {
-      // const p = this.livingOutview.get(peerId)
-      // if (p.lock >= p.occurences || p.occurences <= 0 || p.lock < 0) {
-      //   return false
-      // } else {
-      this.livingOutview.get(peerId).lock++
-      this.emit('lock-' + peerId)
-      this.emit('lock', peerId)
-      return true
-      // }
-    }
-  }
-
-  /**
-   * Unlock an outview connection by decrementing the lock value of a socket
-   * @param  {String}  peerId peer id to unlock
-   * @return {Boolean} False if not unlocked, true when unlocked.
-   */
-  unlock (peerId) {
-    if (!this.livingOutview.exist(peerId)) {
-      return false
-    } else {
-      const p = this.livingOutview.get(peerId)
-      if (p.lock > 0 && p.occurences > 0 /* && p.lock <= p.occurences */) {
-        this.livingOutview.get(peerId).lock--
-        this.emit('unlock-' + peerId)
-        this.emit('unlock', peerId)
-        return true
-      } else {
-        return false
-      }
-    }
-  }
-
-  /**
-   * @description Increase the occurence of the socket in the outview and send a message to the peer connected with to increase its inview
-   * @param  {String} peerId [description]
-   * @return {void}        [description]
-   */
-  async increaseOccurences (peerId) {
-    if (!this.livingOutview.isIn(peerId)) {
-      throw errors.peerNotFound(peerId)
-    } else {
-      this.increaseOccOutview(peerId)
-    }
-  }
-  /**
-   * @description Increase the occurence of the socket specified by its id in the inview
-   * @param  {String} peerId peer id
-   * @return {void}
-   */
-  increaseOccInview (peerId) {
-    this.livingInview.get(peerId).occurences++
-    this._signalConnect(peerId, false)
-  }
-  /**
-   * @description Increase the occurence of the socket specified by its id in the outview
-   * @param  {String} peerId peer id
-   * @return {void}
-   */
-  increaseOccOutview (peerId) {
-    if (!this.livingOutview.isIn(peerId)) {
-      console.log(new Error('[decreaseOccOutview] This error should never happen. Please report.'))
-    } else {
-      this.livingOutview.get(peerId).occurences++
-      this._signalConnect(peerId, true)
-    }
-  }
-  // /**
-  //  * @description Decrease the local inview.
-  //  * Also emit a disconnect signal after decreasing the inview
-  //  * @param  {String}  peerId          id of the peer that we want to decrease the inview
-  //  * @param  {Boolean} [outview=false] if outview or not
-  //  * @return {void}
-  //  */
-  // decreaseOccInview (peerId, outview = false) {
-  //   if (!this.livingInview.has(peerId)) {
-  //     console.log(new Error('[decreaseOccInview] This error should never happen. Please report.'))
-  //   } else {
-  //     this.livingInview.get(peerId).occurences--
-  //     this._signalDisconnect(peerId, outview)
-  //   }
-  // }
-
-  /**
-   * @description Decrease the local outview of the conenction specified by the peer id
-   * Also send a message to the remote peer to decrease its according inview for the socket connected with.
-   * @param  {String}  peerId peer id of the connection we want to decrease the occurence
-   * @return {Promise} Promise resolved when the dec is done or the real disconnection of the physical link
-   */
-  async decreaseOccOutview (peerId) {
-    if (!this.livingOutview.has(peerId)) {
-      throw errors.peerNotFound(peerId)
-    } else {
-      const p = this.livingOutview.get(peerId)
-      if (p.occurences === 0) {
-        // try to remove the connection
-        p.socket.disconnect()
-        throw new Error('The peer cant be at occurences=0 in this phase, please report this error.')
-      } else {
-        // now decrease
-        // this.send(peerId, {
-        //   type: events.neighborhood.OCC_DEC,
-        //   id: this.id
-        // }).then(() => {
-        this.livingOutview.get(peerId).occurences--
-        this._signalDisconnect(peerId, true)
-        if (p.occurences === 0) {
-          return p.socket.disconnect()
-        }
-        // }).catch(e => {
-        //   return Promise.reject(e)
-        // })
-      }
-    }
-  }
-
-  /**
-   * @description Send a message to the peer specified.
-   * Firstly we try to send in the outview, then we try to send the message in the inview.
-   * Then we throw an error if the peer is not found in the outview nor the inview.
-   * @param  {String}  peerId  peer id we want to send the message to
-   * @param  {Object}  message Message to send
-   * @param {Boolean}  [outview=true] Define where to get the socket for sending the message, on the outview or inview
-   * @return {Promise} Promise resolved when the message is sent, reject if the peer is not found or an error is return from the send method of the socket used.
-   */
-  async send (peerId, message, outview = true) {
-    this._debugMessage('[%s/neighborhood] sending a message to: %s', this.id, peerId, message, outview)
     if (outview) {
-      return this.sendOutview(peerId, message)
+      return this._sendOutview(id, message)
     } else if (!outview) {
-      return this.sendInview(peerId, message)
+      return this._sendInview(id, message)
     }
   }
-
-  async sendInview (peerId, message) {
+  async _sendInview (peerId, message) {
     if (this.livingInview.has(peerId)) {
-      if (this.livingInview.get(peerId).socket.status === 'connected') {
-        this._debugMessage('[%s/neighborhood] sending a message on the inview to:  %s', this.id, peerId, message)
-        return this.livingInview.get(peerId).socket.send(this._serialize(message))
-      } else {
-        throw new Error('[' + this.id + '] socket(' + peerId + ') not connected')
-      }
+      this._debugMessage('[%s/n2n] sending a message on the inview to:  %s', this.id, peerId, message)
+      return this.livingInview.get(peerId).socket.send(this._serialize(message))
     } else {
-      throw new Error('[' + this.id + ']Peer not found in the inview: ' + peerId)
+      console.log('living=', this.livingInview)
+      throw new Error('[' + this.id + '] Peer not found in the inview: ' + peerId)
     }
   }
-
-  async sendOutview (peerId, message) {
-    if (this.livingOutview.exist(peerId) || (this.livingOutview.isIn(peerId) && (this.livingOutview.get(peerId).occurences === 0) && (this.livingOutview.get(peerId).socket.status !== 'disconnected'))) {
-      if (this.livingOutview.get(peerId).socket.status === 'connected') {
-        this._debugMessage('[%s/neighborhood] sending a message on the outview to:  %s', this.id, peerId, message)
-        return this.livingOutview.get(peerId).socket.send(this._serialize(message))
-      } else {
-        throw new Error('[' + this.id + '] socket(' + peerId + ') not connected')
-      }
+  async _sendOutview (peerId, message) {
+    if (this.livingOutview.has(peerId)) {
+      this._debugMessage('[%s/n2n] sending a message on the outview to:  %s', this.id, peerId, message)
+      return this.livingOutview.get(peerId).socket.send(this._serialize(message))
     } else {
-      console.log('Socket outview:', this.livingOutview.isIn(peerId) && this.livingOutview.get(peerId))
-      throw new Error('[' + this.id + ']Peer not found in the outview: ' + peerId)
+      console.log('living=', this.livingOutview)
+      throw new Error('[' + this.id + '] Peer not found in the outview: ' + peerId)
     }
   }
 
@@ -1302,12 +796,12 @@ class Neighborhood extends EventEmitter {
    */
   async disconnect (userId) {
     if (userId) {
-      if (!this.livingOutview.isIn(userId)) {
-        throw new Error('peer not found in the outview, perhaps')
+      if (!this.livingOutview.has(userId)) {
+        throw new Error('peer not found in the outview')
       } else {
         const p = this.livingOutview.get(userId)
         if (p.occurences === 0) {
-          throw new Error('No connection found. Maybe the peer is being disconnected.')
+          throw new Error('Occurences = 0, Maybe the peer is already being disconnected.')
         }
         // check if occurences - lock is > 0
         const available = (p.occurences - p.lock) > 0
@@ -1342,6 +836,90 @@ class Neighborhood extends EventEmitter {
   }
 
   /**
+   * Lock an outview connection by incrementing the lock value of a socket
+   * @param  {String}  peerId peer id to lock
+   * @return {Boolean} False if not locked, true when locked.
+   */
+  lock (peerId) {
+    if (!this.livingOutview.has(peerId)) {
+      return errors.peerNotFound(peerId)
+    } else if (this.livingOutview.available(peerId)) {
+      this.livingOutview.get(peerId).lock++
+      this.emit('lock-' + peerId)
+      this.emit('lock', peerId)
+      return true
+    } else {
+      throw new Error(`[${this.id}] cannot lock this connection id= ${peerId}, not available, (lock= ${this.livingOutview.get(peerId).lock} and occurences= ${this.livingOutview.get(peerId).occurences})`)
+    }
+  }
+
+  /**
+   * Unlock an outview connection by decrementing the lock value of a socket
+   * @param  {String}  peerId peer id to unlock
+   * @return {Boolean} False if not unlocked, true when unlocked.
+   */
+  unlock (peerId) {
+    if (!this.livingOutview.has(peerId)) {
+      throw new Error(`[${this.id}] cannot unlock a connection that does not exist. id=${peerId}`)
+    } else {
+      const p = this.livingOutview.get(peerId)
+      if (p.lock > 0 && p.occurences > 0 && p.socket.status === 'connected') {
+        this.livingOutview.get(peerId).lock--
+        this.emit('unlock-' + peerId)
+        this.emit('unlock', peerId)
+        return true
+      } else {
+        throw new Error(`[${this.id}] cannot unlock a connection under the status ${p.socket.status}, (lock= ${p.lock} and occurences= ${p.occurences}), not locked!`)
+      }
+    }
+  }
+
+  /**
+   * @description Increase the occurence of the socket in the outview and send a message to the peer connected with to increase its inview
+   * @param  {String} peerId [description]
+   * @return {Promise}        [description]
+   */
+  increaseOccurences (peerId) {
+    return new Promise((resolve, reject) => {
+      if (!this.livingOutview.has(peerId)) {
+        reject(errors.peerNotFound(peerId))
+      } else {
+        this.livingOutview.get(peerId).occurences++
+        this._signalConnect(peerId, true)
+        resolve()
+      }
+    })
+  }
+  /**
+   * @description Decrease the local outview of the conenction specified by the peer id
+   * Also send a message to the remote peer to decrease its according inview for the socket connected with.
+   * @param  {String}  peerId peer id of the connection we want to decrease the occurence
+   * @return {Promise} Promise resolved when the dec is done or the real disconnection of the physical link
+   */
+  async decreaseOccOutview (peerId) {
+    if (!this.livingOutview.has(peerId)) {
+      throw errors.peerNotFound(peerId)
+    } else {
+      const p = this.livingOutview.get(peerId)
+      if (p.lock > 0 && p.occurences === 0) {
+        throw new Error('lock cannot be higher than the number of occurences when a deletion is performed.')
+      } else if (p.occurences === 0) {
+        // try to remove the connection
+        this.livingOutview.delete(peerId)
+        p.socket.disconnect()
+        throw new Error('The peer cant be at occurences=0 in this phase, please report this error.')
+      } else {
+        this.livingOutview.get(peerId).occurences--
+        this._signalDisconnect(peerId, true)
+        if (p.occurences === 0) {
+          this.livingOutview.delete(peerId)
+          return p.socket.disconnect()
+        }
+      }
+    }
+  }
+
+  /**
    * Simulate a crash by disconnecting all sockets from inview/outview
    * @return {void}
    */
@@ -1361,13 +939,27 @@ class Neighborhood extends EventEmitter {
    * @param  {Boolean} [outview=false] if it is an inview or outview sockt
    * @return {Socket}
    */
-  createNewSocket (options, id, outview = false) {
-    const newSocket = new this.options.neighborhood.SocketClass(options)
+  createNewSocket (options, id, outview = false, timeout = this.options.n2n.timeout) {
+    const newSocket = new this.options.n2n.SocketClass(options)
     this._debug('[%s] new socket created: %s', this.id, newSocket.socketId)
-    /* if (!outview) */ newSocket.status = 'connecting'
+    newSocket.status = 'connecting'
     newSocket.once('connect', () => {
       if (!outview) {
-        this.increaseOccInview(id, outview)
+        this.pendingInview.delete(id)
+        this.livingInview.set(id, {
+          socket: newSocket,
+          occurences: 1,
+          lock: 0
+        })
+        this._signalConnect(id, false)
+      } else {
+        this.pendingOutview.delete(id)
+        this.livingOutview.set(id, {
+          socket: newSocket,
+          occurences: 1,
+          lock: 0
+        })
+        this._signalConnect(id, true)
       }
     })
     newSocket.on('data', (data) => {
@@ -1380,13 +972,13 @@ class Neighborhood extends EventEmitter {
       this._manageError(error, id, outview)
     })
     if (outview) {
-      this.livingOutview.set(id, {
+      this.pendingOutview.set(id, {
         socket: newSocket,
         occurences: 0,
         lock: 0
       })
     } else {
-      this.livingInview.set(id, {
+      this.pendingInview.set(id, {
         socket: newSocket,
         occurences: 0,
         lock: 0
@@ -1400,7 +992,7 @@ class Neighborhood extends EventEmitter {
    * @param  {Error}  error           The error received
    * @param  {String}  peerId          Id of the peer that is errored
    * @param  {Boolean} [outview=false] (In/out)view
-   * @param  {function}  reject          callback reject (used in the connection function)
+   * @param  {function}  reject         reject callback (used in the connection function)
    * @return {void}
    */
   _manageError (error, peerId, outview = false, reject) {
@@ -1408,14 +1000,31 @@ class Neighborhood extends EventEmitter {
     if (error.message === 'Ice connection failed.') {
       this._debug('Chrome disconnection: ', peerId, error)
     } else {
-      console.log('Error of the socket: (%s) (outview:' + outview + ') this is just a log. The error is catched.', peerId, error)
+      console.log(`[%s] Error of the socket: (%s), this is just a log. The error is catched. [reject:${typeof reject}]`, this.id, peerId, error)
     }
-    if (outview && this.livingOutview.has(peerId)) {
-      this.livingOutview.get(peerId).socket.disconnect()
-    } else if (!outview && this.livingInview.has(peerId)) {
-      this.livingInview.get(peerId).socket.disconnect()
+    if (reject) {
+      // manage error when living
+      if (outview && this.pendingOutview.has(peerId)) {
+        this._debug('[%s] socket errored, need to disconnect the socket...', this.id)
+        this.pendingOutview.get(peerId).socket.disconnect()
+        this.pendingOutview.delete(peerId)
+      } else if (!outview && this.pendingInview.has(peerId)) {
+        this._debug('[%s] socket errored, need to disconnect the socket...', this.id)
+        this.pendingInview.get(peerId).socket.disconnect()
+        this.pendingInview.delete(peerId)
+      }
+      // if pending reject the connection
+      reject(error)
+    } else {
+      // manage error when living
+      if (outview && this.livingOutview.has(peerId)) {
+        this._debug('[%s] socket errored, need to disconnect the socket...', this.id)
+        this.livingOutview.get(peerId).socket.disconnect()
+      } else if (!outview && this.livingInview.has(peerId)) {
+        this._debug('[%s] socket errored, need to disconnect the socket...', this.id)
+        this.livingInview.get(peerId).socket.disconnect()
+      }
     }
-    if (reject) reject(error)
   }
 
   /**
@@ -1429,13 +1038,13 @@ class Neighborhood extends EventEmitter {
       const p = this.livingOutview.get(peerId)
       this.livingOutview.delete(peerId)
       for (let i = 0; i < (p.occurences); ++i) {
-        this._signalDisconnect(peerId, outview)
+        this._signalDisconnect(peerId, outview, true)
       }
     } else if (!outview && this.livingInview.has(peerId)) {
       const p = this.livingInview.get(peerId)
       this.livingInview.delete(peerId)
       for (let i = 0; i < (p.occurences); ++i) {
-        this._signalDisconnect(peerId, outview)
+        this._signalDisconnect(peerId, outview, true)
       }
     } else {
       console.log('[socket does not exist] Connection closed', peerId)
@@ -1495,9 +1104,9 @@ class Neighborhood extends EventEmitter {
   __receive (id, data) {
     try {
       data = this._deserialize(data)
-      this.emit('receive', id, data)
+      this.emit(data.protocol, id, data.msg)
     } catch (e) {
-      console.error(new Error('Impossible to parse data: ', e))
+      console.error(new Error('Impossible to parse data: ' + e.message), id, data)
     }
   }
 
@@ -1522,7 +1131,7 @@ class Neighborhood extends EventEmitter {
   getAllNeighbours () {
     const res = []
     this.livingOutview.forEach((v, k) => {
-      if (v.occurences > 0) {
+      if (v.occurences > 0 && v.socket.status === 'connected') {
         res.push({
           peer: v,
           id: k
@@ -1549,7 +1158,7 @@ class Neighborhood extends EventEmitter {
   getNeighboursOutview () {
     const res = []
     this.livingOutview.forEach((peer, id) => {
-      if ((peer.occurences - peer.lock) > 0) res.push({ peer, id })
+      res.push({ peer, id })
     })
     return res
   }
@@ -1593,55 +1202,49 @@ class Neighborhood extends EventEmitter {
     })
     return res
   }
-}
 
-module.exports = Neighborhood
-
-
-/***/ }),
-
-/***/ "./lib/neighborhood/view.js":
-/*!**********************************!*\
-  !*** ./lib/neighborhood/view.js ***!
-  \**********************************/
-/*! no static exports found */
-/***/ (function(module, exports) {
-
-class View extends Map {
-  isIn (id) {
-    return super.has(id)
-  }
-
-  has (id) {
-    if (super.has(id)) {
-      const node = super.get(id)
-      if (node.occurences === 0 && node.lock === 0) {
-        return true
-      } else if ((node.occurences - node.lock) > 0) {
-        return true
-      } else {
-        return false
+  _receive (id, message) {
+    try {
+      if (message && 'type' in message && 'id' in message && message.type === events.n2n.CONNECT_TO_US) {
+        this.signaling.direct._connectToUs(message)
+      } else if (message && 'type' in message && 'response' in message && message.type === events.n2n.RESPONSE) {
+        this.events.emit(message.jobId, message)
+      } else if (message && 'type' in message && message.type === events.n2n.DIRECT_TO) {
+        this.signaling.direct.receiveOffer(message)
+      } else if (message && 'type' in message && message.type === events.n2n.DIRECT_BACK) {
+        this.signaling.direct.receiveOffer(message)
+      } else if (message && 'type' in message && message.type === events.n2n.bridgeIO.BRIDGE) {
+        this.signaling.bridgeIO._bridge(id, message)
+      } else if (message && 'type' in message && message.type === events.n2n.bridgeIO.BRIDGE_FORWARD) {
+        this.signaling.bridgeIO.forward(message)
+      } else if (message && 'type' in message && message.type === events.n2n.bridgeIO.BRIDGE_FORWARD_BACK) {
+        this.signaling.bridgeIO.forwardBack(message)
+      } else if (message && 'type' in message && message.type === events.n2n.bridgeIO.BRIDGE_FORWARD_RESPONSE) {
+        this.signaling.bridgeIO.receiveOffer(message)
+      } else if (message && 'type' in message && message.type === events.n2n.bridgeOO.BRIDGE) {
+        this.signaling.bridgeOO._bridge(id, message)
+      } else if (message && 'type' in message && message.type === events.n2n.bridgeOO.BRIDGE_FORWARD) {
+        this.signaling.bridgeOO.forward(message)
+      } else if (message && 'type' in message && message.type === events.n2n.bridgeOO.BRIDGE_FORWARD_BACK) {
+        this.signaling.bridgeOO.forwardBack(message)
+      } else if (message && 'type' in message && message.type === events.n2n.bridgeOO.BRIDGE_FORWARD_RESPONSE) {
+        this.signaling.bridgeOO.receiveOffer(message)
+      } else if (message && 'type' in message && message.type === events.n2n.bridgeOI.BRIDGE) {
+        this.signaling.bridgeOI._bridge(id, message)
+      } else if (message && 'type' in message && message.type === events.n2n.bridgeOI.BRIDGE_FORWARD) {
+        this.signaling.bridgeOI.forward(message)
+      } else if (message && 'type' in message && message.type === events.n2n.bridgeOI.BRIDGE_FORWARD_BACK) {
+        this.signaling.bridgeOI.forwardBack(message)
+      } else if (message && 'type' in message && message.type === events.n2n.bridgeOI.BRIDGE_FORWARD_RESPONSE) {
+        this.signaling.bridgeOI.receiveOffer(message)
       }
-    } else {
-      return false
-    }
-  }
-
-  exist (id) {
-    if (super.has(id)) {
-      const node = super.get(id)
-      if (node.occurences === 0) {
-        return false
-      } else {
-        return true
-      }
-    } else {
-      return false
+    } catch (e) {
+      console.error('An error here? hum please report...', e)
     }
   }
 }
 
-module.exports = View
+module.exports = N2N
 
 
 /***/ }),
@@ -1664,15 +1267,16 @@ class BridgeIO extends SignalingAPI {
     super(options)
     this.parent = n2n
     this._debug = debug('n2n:bridge:io')
-    this.on(events.signaling.RECEIVE_OFFER, ({ initiator, destination, forward, offerType, offer }) => {
+    this.on(events.signaling.RECEIVE_OFFER, ({ jobId, initiator, destination, forward, offerType, offer }) => {
       if (!initiator || !destination || !offer || !offerType) throw new Error('PLEASE REPORT, Problem with the offline signaling service. provide at least initiator, destination, type a,d the offer as properties in the object received')
       // do we have the initiator in our list of connections?
-      if (!this.parent.view.livingInview.has(initiator) && offerType === 'new') {
+      if (!this.parent.livingInview.has(initiator) && offerType === 'new') {
         // we do have the socket for the moment, create it
-        this.parent.view.createNewSocket(this.parent.options.socket, initiator, false)
+        this.parent.createNewSocket(this.parent.options.socket, initiator, false)
         // ATTENTION: LISTENERS HAVE TO BE DECLARED ONCE!
-        this.parent.view.livingInview.get(initiator).socket.on(events.socket.EMIT_OFFER, (socketOffer) => {
+        this.parent.pendingInview.get(initiator).socket.on(events.socket.EMIT_OFFER, (socketOffer) => {
           this.sendOfferBack({
+            jobId,
             initiator,
             destination,
             forward,
@@ -1680,25 +1284,34 @@ class BridgeIO extends SignalingAPI {
             offerType: 'back'
           })
         })
+        this.parent.pendingInview.get(initiator).socket.on(events.socket.EMIT_OFFER_RENEGOCIATE, (socketOffer) => {
+          console.log('[bridge] receive a negociate offer')
+          const off = {
+            jobId,
+            initiator,
+            destination,
+            offer: socketOffer,
+            offerType: 'back'
+          }
+          this.parent.signaling.direct.sendOfferBackRenegociate(off)
+        })
         // WE RECEIVE THE OFFER ON THE ACCEPTOR
-        this.parent.view.livingInview.get(initiator).socket.emit(events.socket.RECEIVE_OFFER, offer)
+        this.parent.pendingInview.get(initiator).socket.emit(events.socket.RECEIVE_OFFER, offer)
       } else {
         // now if it is a new offer, give it to initiator socket, otherwise to destination socket
         if (offerType === 'new') {
-          try {
-            // WE RECEIVE THE OFFER ON THE ACCEPTOR
-            this.parent.view.livingInview.get(initiator).socket.emit(events.socket.RECEIVE_OFFER, offer)
-          } catch (e) {
-            console.error('PLEASE REPORT THIS ISSUE: ', e)
+          // check if it is in pending or living
+          if (this.parent.pendingInview.has(initiator)) {
+            this.parent.pendingInview.get(initiator).socket.emit(events.socket.RECEIVE_OFFER, offer)
+          } else if (this.parent.livingInview.has(initiator)) {
+            this.parent.livingInview.get(initiator).socket.emit(events.socket.RECEIVE_OFFER, offer)
           }
         } else if (offerType === 'back') {
-          try {
-            // WE RECEIVE THE ACCEPTED OFFER ON THE INITIATOR
-            if (this.parent.view.livingOutview.isIn(destination) && this.parent.view.livingOutview.get(destination).socket.status !== 'connected') {
-              this.parent.view.livingOutview.get(destination).socket.emit(events.socket.RECEIVE_OFFER, offer)
-            }
-          } catch (e) {
-            console.error('PLEASE REPORT THIS ISSUE: ', e)
+          // check if it is in pending or living
+          if (this.parent.pendingOutview.has(destination)) {
+            this.parent.pendingOutview.get(destination).socket.emit(events.socket.RECEIVE_OFFER, offer)
+          } else if (this.parent.livingOutview.has(destination)) {
+            this.parent.livingOutview.get(destination).socket.emit(events.socket.RECEIVE_OFFER, offer)
           }
         }
       }
@@ -1765,27 +1378,31 @@ class BridgeIO extends SignalingAPI {
    */
   async bridge (from, dest, timeout = this.parent.options.n2n.timeout) {
     return new Promise((resolve, reject) => {
-      const jobId = translator.new()
-      const tout = setTimeout(() => {
-        reject(new Error('timeout'))
-      }, timeout)
-      this.parent.events.once(jobId, (msg) => {
-        clearTimeout(tout)
-        if (msg.response) {
-          resolve()
-        } else {
-          reject(new Error('bridge rejected.'))
-        }
-      })
-      this.parent.send(this.parent.options.n2n.protocol, from, {
-        type: events.n2n.bridgeIO.BRIDGE,
-        from,
-        dest,
-        forward: this.parent.id,
-        jobId
-      }, false).catch(e => {
-        reject(e)
-      })
+      if (this.parent.livingInview.has(from) && this.parent.livingOutview.has(dest)) {
+        const jobId = translator.new()
+        const tout = setTimeout(() => {
+          reject(new Error('timeout'))
+        }, timeout)
+        this.parent.events.once(jobId, (msg) => {
+          clearTimeout(tout)
+          if (msg.response) {
+            resolve()
+          } else {
+            reject(new Error('bridge rejected.'))
+          }
+        })
+        this.parent.send(this.parent.options.n2n.protocol, from, {
+          type: events.n2n.bridgeIO.BRIDGE,
+          from,
+          dest,
+          forward: this.parent.id,
+          jobId
+        }, false).catch(e => {
+          reject(e)
+        })
+      } else {
+        reject(new Error(`[${this.parent.id}/bridgeOO] from need to be in our inview and dest in our outview`))
+      }
     })
   }
   /**
@@ -1798,33 +1415,33 @@ class BridgeIO extends SignalingAPI {
    * @return {void}
    */
   _bridge (id, { from, dest, forward, jobId }) {
-    if (this.parent.view.livingOutview.exist(dest)) {
-      try {
-        this.parent.view.increaseOccurences(dest, true).then(() => {
-          this.parent.send(this.parent.options.n2n.protocol, forward, {
-            type: events.n2n.RESPONSE,
-            response: true,
-            jobId
-          }).catch(e => {
-            console.error('cannot send response', e)
-          })
-        }).catch(e => {
-          console.error('cannot increase occurences', e)
-        })
-      } catch (e) {
-        console.error(e)
-      }
-    } else if (!this.parent.view.livingOutview.isIn(dest)) {
+    const sendResponse = (response) => {
+      this.parent.send(this.parent.options.n2n.protocol, forward, {
+        type: events.n2n.RESPONSE,
+        response: true,
+        jobId
+      }).catch(e => {
+        console.error('cannot send response', e)
+      })
+    }
+    if (this.parent.livingOutview.has(dest)) {
+      this.parent.increaseOccurences(dest, true).then(() => {
+        sendResponse(true)
+      }).catch(e => {
+        console.error('cannot increase occurences', e)
+      })
+    } else if (!this.parent.livingOutview.has(dest) && !this.parent.pendingOutview.has(dest)) {
       new Promise((resolve, reject) => {
         const tout = setTimeout(() => {
           reject(new Error('timeout'))
         }, this.parent.options.n2n.timeout)
-        const socket = this.parent.view.createNewSocket(this.parent.options.socket, dest, true)
+        const socket = this.parent.createNewSocket(this.parent.options.socket, dest, true)
         socket.on('error', (error) => {
-          this.parent.view._manageError(error, dest, true, reject)
+          this.parent._manageError(error, dest, true, reject)
         })
         socket.on(events.socket.EMIT_OFFER, (offer) => {
           const off = {
+            jobId,
             initiator: this.parent.id,
             destination: dest,
             forward,
@@ -1841,34 +1458,12 @@ class BridgeIO extends SignalingAPI {
           reject(e)
         })
       }).then(() => {
-        this.parent.view.increaseOccurences(dest, true).then(() => {
-          this.parent.send(this.parent.options.n2n.protocol, forward, {
-            type: events.n2n.RESPONSE,
-            response: true,
-            jobId
-          }, true).catch(e => {
-            console.error('cannot send response to ' + forward, e)
-          })
-        }).catch(e => {
-          console.error('cannot increase occurences for ' + dest, e)
-        })
+        sendResponse(true)
       }).catch(e => {
-        this.parent.send(this.parent.options.n2n.protocol, forward, {
-          type: events.n2n.RESPONSE,
-          response: false,
-          jobId
-        }, true).catch(e => {
-          console.error('cannot send response to ' + forward, e)
-        })
+        sendResponse(false)
       })
     } else {
-      this.parent.send(this.parent.options.n2n.protocol, forward, {
-        type: events.n2n.RESPONSE,
-        response: false,
-        jobId
-      }, true).catch(e => {
-        console.error('cannot send response to ' + forward, e)
-      })
+      sendResponse(false)
     }
   }
 } // not implemented for the moment
@@ -1896,15 +1491,16 @@ class BridgeOI extends SignalingAPI {
     super(options)
     this.parent = n2n
     this._debug = debug('n2n:bridge:oi')
-    this.on(events.signaling.RECEIVE_OFFER, ({ initiator, destination, forward, offerType, offer }) => {
+    this.on(events.signaling.RECEIVE_OFFER, ({ jobId, initiator, destination, forward, offerType, offer }) => {
       if (!initiator || !destination || !offer || !offerType) throw new Error('PLEASE REPORT, Problem with the offline signaling service. provide at least initiator, destination, type a,d the offer as properties in the object received')
       // do we have the initiator in our list of connections?
-      if (!this.parent.view.livingInview.has(initiator) && offerType === 'new') {
+      if (!this.parent.livingInview.has(initiator) && offerType === 'new') {
         // we do have the socket for the moment, create it
-        this.parent.view.createNewSocket(this.parent.options.socket, initiator, false)
+        this.parent.createNewSocket(this.parent.options.socket, initiator, false)
         // ATTENTION: LISTENERS HAVE TO BE DECLARED ONCE!
-        this.parent.view.livingInview.get(initiator).socket.on(events.socket.EMIT_OFFER, (socketOffer) => {
+        this.parent.pendingInview.get(initiator).socket.on(events.socket.EMIT_OFFER, (socketOffer) => {
           this.sendOfferBack({
+            jobId,
             initiator,
             destination,
             forward,
@@ -1912,25 +1508,34 @@ class BridgeOI extends SignalingAPI {
             offerType: 'back'
           })
         })
+        this.parent.pendingInview.get(initiator).socket.on(events.socket.EMIT_OFFER_RENEGOCIATE, (socketOffer) => {
+          console.log('[bridge] receive a negociate offer')
+          const off = {
+            jobId,
+            initiator,
+            destination,
+            offer: socketOffer,
+            offerType: 'back'
+          }
+          this.parent.signaling.direct.sendOfferBackRenegociate(off)
+        })
         // WE RECEIVE THE OFFER ON THE ACCEPTOR
-        this.parent.view.livingInview.get(initiator).socket.emit(events.socket.RECEIVE_OFFER, offer)
+        this.parent.pendingInview.get(initiator).socket.emit(events.socket.RECEIVE_OFFER, offer)
       } else {
         // now if it is a new offer, give it to initiator socket, otherwise to destination socket
         if (offerType === 'new') {
-          try {
-            // WE RECEIVE THE OFFER ON THE ACCEPTOR
-            this.parent.view.livingInview.get(initiator).socket.emit(events.socket.RECEIVE_OFFER, offer)
-          } catch (e) {
-            console.error('PLEASE REPORT THIS ISSUE: ', e)
+          // check if it is in pending or living
+          if (this.parent.pendingInview.has(initiator)) {
+            this.parent.pendingInview.get(initiator).socket.emit(events.socket.RECEIVE_OFFER, offer)
+          } else if (this.parent.livingInview.has(initiator)) {
+            this.parent.livingInview.get(initiator).socket.emit(events.socket.RECEIVE_OFFER, offer)
           }
         } else if (offerType === 'back') {
-          try {
-            // WE RECEIVE THE ACCEPTED OFFER ON THE INITIATOR
-            if (this.parent.view.livingOutview.isIn(destination) && this.parent.view.livingOutview.get(destination).socket.status !== 'connected') {
-              this.parent.view.livingOutview.get(destination).socket.emit(events.socket.RECEIVE_OFFER, offer)
-            }
-          } catch (e) {
-            console.error('PLEASE REPORT THIS ISSUE: ', e)
+          // check if it is in pending or living
+          if (this.parent.pendingOutview.has(destination)) {
+            this.parent.pendingOutview.get(destination).socket.emit(events.socket.RECEIVE_OFFER, offer)
+          } else if (this.parent.livingOutview.has(destination)) {
+            this.parent.livingOutview.get(destination).socket.emit(events.socket.RECEIVE_OFFER, offer)
           }
         }
       }
@@ -1989,7 +1594,7 @@ class BridgeOI extends SignalingAPI {
 
   /**
    * Perform a bridge without locking any connection, this is your responsability to lock connections correctly.
-   * From (inview) to dest (outview)
+   * From (outview) to dest (inview)
    * @param  {String}  from peer id (initiator)
    * @param  {String}  dest   peer id (destination)
    * @param  {Number} [timeout=this.parent.options.n2n.timeout] time to wait before rejecting.
@@ -1997,54 +1602,58 @@ class BridgeOI extends SignalingAPI {
    */
   async bridge (from, dest, timeout = this.parent.options.n2n.timeout) {
     return new Promise((resolve, reject) => {
-      const jobId = translator.new()
-      const tout = setTimeout(() => {
-        reject(new Error('timeout'))
-      }, timeout)
-      this.parent.events.once(jobId, (msg) => {
-        clearTimeout(tout)
-        if (msg.response) {
-          resolve()
-        } else {
-          reject(new Error('bridge rejected.'))
-        }
-      })
-      this.parent.send(this.parent.options.n2n.protocol, from, {
-        type: events.n2n.bridgeOI.BRIDGE,
-        from,
-        dest,
-        forward: this.parent.id,
-        jobId
-      }, true).catch(e => {
-        reject(e)
-      })
+      if (this.parent.livingOutview.has(from) && this.parent.livingInview.has(dest)) {
+        const jobId = translator.new()
+        const tout = setTimeout(() => {
+          reject(new Error('timeout'))
+        }, timeout)
+        this.parent.events.once(jobId, (msg) => {
+          clearTimeout(tout)
+          if (msg.response) {
+            resolve()
+          } else {
+            reject(new Error('bridge rejected.'))
+          }
+        })
+        this.parent.send(this.parent.options.n2n.protocol, from, {
+          type: events.n2n.bridgeOI.BRIDGE,
+          from,
+          dest,
+          forward: this.parent.id,
+          jobId
+        }, true).catch(e => {
+          reject(e)
+        })
+      } else if (!this.parent.livingOutview.has(dest)) {
+        reject(new Error(`[${this.parent.id}/bridgeOO] from need to be in our outview and dest in our inview`))
+      }
     })
   }
   _bridge (id, { from, dest, forward, jobId }) {
-    if (this.parent.view.livingOutview.exist(dest)) {
-      try {
-        this.parent.view.increaseOccurences(dest, true).then(() => {
-          this.parent.send(this.parent.options.n2n.protocol, forward, {
-            type: events.n2n.RESPONSE,
-            response: true,
-            jobId
-          }, false).catch(e => {
-            console.error('cannot send response', e)
-          })
-        }).catch(e => {
-          console.error('cannot increase occurences', e)
-        })
-      } catch (e) {
-        console.error(e)
-      }
-    } else if (!this.parent.view.livingOutview.isIn(dest)) {
+    const sendResponse = (response) => {
+      this.parent.send(this.parent.options.n2n.protocol, forward, {
+        type: events.n2n.RESPONSE,
+        response,
+        jobId
+      }, false).catch(e => {
+        console.error('cannot send response', e)
+      })
+    }
+    if (this.parent.livingOutview.has(dest)) {
+      this.parent.increaseOccurences(dest, true).then(() => {
+        sendResponse(true)
+      }).catch(e => {
+        console.error('cannot increase occurences', e)
+        sendResponse(false)
+      })
+    } else if (!this.parent.livingOutview.has(dest) && !this.parent.pendingOutview.has(dest)) {
       new Promise((resolve, reject) => {
         const tout = setTimeout(() => {
           reject(new Error('timeout'))
         }, this.parent.options.n2n.timeout)
-        const socket = this.parent.view.createNewSocket(this.parent.options.socket, dest, true)
+        const socket = this.parent.createNewSocket(this.parent.options.socket, dest, true)
         socket.on('error', (error) => {
-          this.parent.view._manageError(error, dest, true, reject)
+          this.parent._manageError(error, dest, true, reject)
         })
         socket.on(events.socket.EMIT_OFFER, (offer) => {
           const off = {
@@ -2064,34 +1673,12 @@ class BridgeOI extends SignalingAPI {
           reject(e)
         })
       }).then(() => {
-        this.parent.view.increaseOccurences(dest, true).then(() => {
-          this.parent.send(this.parent.options.n2n.protocol, forward, {
-            type: events.n2n.RESPONSE,
-            response: true,
-            jobId
-          }, false).catch(e => {
-            console.error('cannot send response to ' + forward, e)
-          })
-        }).catch(e => {
-          console.error('cannot increase occurences for ' + dest, e)
-        })
+        sendResponse(true)
       }).catch(e => {
-        this.parent.send(this.parent.options.n2n.protocol, forward, {
-          type: events.n2n.RESPONSE,
-          response: false,
-          jobId
-        }, false).catch(e => {
-          console.error('cannot send response to ' + forward, e)
-        })
+        sendResponse(false)
       })
     } else {
-      this.parent.send(this.parent.options.n2n.protocol, forward, {
-        type: events.n2n.RESPONSE,
-        response: false,
-        jobId
-      }, false).catch(e => {
-        console.error('cannot send response to ' + forward, e)
-      })
+      sendResponse(false)
     }
   }
 } // not implemented for the moment
@@ -2114,20 +1701,21 @@ const debug = __webpack_require__(/*! debug */ "./node_modules/debug/src/browser
 const short = __webpack_require__(/*! short-uuid */ "./node_modules/short-uuid/index.js")
 const translator = short()
 
-class BridgeSignaling extends SignalingAPI {
+class BridgeOO extends SignalingAPI {
   constructor (options, n2n) {
     super(options)
     this.parent = n2n
     this._debug = debug('n2n:bridge:oo')
-    this.on(events.signaling.RECEIVE_OFFER, ({ initiator, destination, forward, offerType, offer }) => {
-      if (!initiator || !destination || !offer || !offerType) throw new Error('PLEASE REPORT, Problem with the offline signaling service. provide at least initiator, destination, type a,d the offer as properties in the object received')
+    this.on(events.signaling.RECEIVE_OFFER, ({ jobId, initiator, destination, forward, offerType, offer }) => {
+      if (!initiator || !destination || !offer || !offerType || !jobId || !forward) throw new Error('PLEASE REPORT, Problem with the offline signaling service. provide at least jobId, initiator, destination, forward, offerType, offer')
       // do we have the initiator in our list of connections?
-      if (!this.parent.view.livingInview.has(initiator) && offerType === 'new') {
+      if (!this.parent.pendingInview.has(initiator) && offerType === 'new') {
         // we do have the socket for the moment, create it
-        this.parent.view.createNewSocket(this.parent.options.socket, initiator, false)
+        this.parent.createNewSocket(this.parent.options.socket, initiator, false)
         // ATTENTION: LISTENERS HAVE TO BE DECLARED ONCE!
-        this.parent.view.livingInview.get(initiator).socket.on(events.socket.EMIT_OFFER, (socketOffer) => {
+        this.parent.pendingInview.get(initiator).socket.on(events.socket.EMIT_OFFER, (socketOffer) => {
           this.sendOfferBack({
+            jobId,
             initiator,
             destination,
             forward,
@@ -2135,25 +1723,34 @@ class BridgeSignaling extends SignalingAPI {
             offerType: 'back'
           })
         })
+        this.parent.pendingInview.get(initiator).socket.on(events.socket.EMIT_OFFER_RENEGOCIATE, (socketOffer) => {
+          console.log('[bridge] receive a negociate offer')
+          const off = {
+            jobId,
+            initiator,
+            destination,
+            offer: socketOffer,
+            offerType: 'back'
+          }
+          this.parent.signaling.direct.sendOfferBackRenegociate(off)
+        })
         // WE RECEIVE THE OFFER ON THE ACCEPTOR
-        this.parent.view.livingInview.get(initiator).socket.emit(events.socket.RECEIVE_OFFER, offer)
+        this.parent.pendingInview.get(initiator).socket.emit(events.socket.RECEIVE_OFFER, offer)
       } else {
         // now if it is a new offer, give it to initiator socket, otherwise to destination socket
         if (offerType === 'new') {
-          try {
-            // WE RECEIVE THE OFFER ON THE ACCEPTOR
-            this.parent.view.livingInview.get(initiator).socket.emit(events.socket.RECEIVE_OFFER, offer)
-          } catch (e) {
-            console.error('PLEASE REPORT THIS ISSUE: ', e)
+          // check if it is in pending or living
+          if (this.parent.pendingInview.has(initiator)) {
+            this.parent.pendingInview.get(initiator).socket.emit(events.socket.RECEIVE_OFFER, offer)
+          } else if (this.parent.livingInview.has(initiator)) {
+            this.parent.livingInview.get(initiator).socket.emit(events.socket.RECEIVE_OFFER, offer)
           }
         } else if (offerType === 'back') {
-          try {
-            // WE RECEIVE THE ACCEPTED OFFER ON THE INITIATOR
-            if (this.parent.view.livingOutview.isIn(destination) && this.parent.view.livingOutview.get(destination).socket.status !== 'connected') {
-              this.parent.view.livingOutview.get(destination).socket.emit(events.socket.RECEIVE_OFFER, offer)
-            }
-          } catch (e) {
-            console.error('PLEASE REPORT THIS ISSUE: ', e)
+          // check if it is in pending or living
+          if (this.parent.pendingOutview.has(destination)) {
+            this.parent.pendingOutview.get(destination).socket.emit(events.socket.RECEIVE_OFFER, offer)
+          } else if (this.parent.livingOutview.has(destination)) {
+            this.parent.livingOutview.get(destination).socket.emit(events.socket.RECEIVE_OFFER, offer)
           }
         }
       }
@@ -2194,7 +1791,7 @@ class BridgeSignaling extends SignalingAPI {
    */
   async forward (offer) {
     offer.type = events.n2n.bridgeOO.BRIDGE_FORWARD_RESPONSE
-    this._debug('[%s] forwarding to %s', this.parent.id, offer.destination, offer, offer.outview)
+    this._debug('[%s] forwarding to %s', this.parent.id, offer.destination, offer)
     // always forward on an outview link
     this.parent.send(this.parent.options.n2n.protocol, offer.destination, offer, true)
   }
@@ -2205,7 +1802,7 @@ class BridgeSignaling extends SignalingAPI {
    */
   async forwardBack (offer) {
     offer.type = events.n2n.bridgeOO.BRIDGE_FORWARD_RESPONSE
-    this._debug('[%s] forwarding back to %s', this.parent.id, offer.initiator, offer, offer.outview)
+    this._debug('[%s] forwarding back to %s', this.parent.id, offer.initiator, offer)
     // forward back the message on an (inview/outview) link, it depends on the argument
     this.parent.send(this.parent.options.n2n.protocol, offer.initiator, offer, true)
   }
@@ -2219,57 +1816,73 @@ class BridgeSignaling extends SignalingAPI {
    */
   async bridge (from, dest, timeout = this.parent.options.n2n.timeout) {
     return new Promise((resolve, reject) => {
-      const jobId = translator.new()
-      const tout = setTimeout(() => {
-        reject(new Error('timeout'))
-      }, timeout)
-      this.parent.events.once(jobId, (msg) => {
-        clearTimeout(tout)
-        if (msg.response) {
-          resolve()
-        } else {
-          reject(new Error('bridge rejected.'))
-        }
-      })
-      this.parent.send(this.parent.options.n2n.protocol, from, {
-        type: events.n2n.bridgeOO.BRIDGE,
-        from,
-        dest,
-        forward: this.parent.id,
-        jobId
-      }, true).catch(e => {
-        reject(e)
-      })
+      if (!this.parent.livingOutview.has(from)) {
+        reject(new Error(`[${this.parent.id}/bridgeOO] peerId is not in our outview: ${from}`))
+      } else if (!this.parent.livingOutview.has(dest)) {
+        reject(new Error(`[${this.parent.id}/bridgeOO] peerId is not in our outview: ${dest}`))
+      } else {
+        const jobId = translator.new()
+        const tout = setTimeout(() => {
+          reject(new Error(`[${this.parent.id}/bridge00] (jobId=${jobId}) connection timeout(${timeout} (ms)) from ${from} to ${dest}`))
+        }, timeout)
+        this._debug(`[${this.parent.id}/bridge00] waiting response for jobId:${jobId} `)
+        this.parent.events.once(jobId, (msg) => {
+          clearTimeout(tout)
+          this._debug(`[${this.parent.id}/bridge00] receive response for jobId:${jobId} `)
+          if (msg.response) {
+            resolve()
+          } else {
+            reject(new Error('bridge rejected. Reason: ' + msg.reason))
+          }
+        })
+        this.parent.send(this.parent.options.n2n.protocol, from, {
+          type: events.n2n.bridgeOO.BRIDGE,
+          from,
+          dest,
+          forward: this.parent.id,
+          jobId
+        }, true).catch(e => {
+          console.error('cannot send a bridge request to ' + from, e)
+          clearTimeout(tout)
+          reject(e)
+        })
+      }
     })
   }
   _bridge (id, { from, dest, forward, jobId }) {
-    if (this.parent.view.livingOutview.exist(dest)) {
-      try {
-        this.parent.view.increaseOccurences(dest, true).then(() => {
-          this.parent.send(this.parent.options.n2n.protocol, forward, {
-            type: events.n2n.RESPONSE,
-            response: true,
-            jobId
-          }, false).catch(e => {
-            console.error('cannot send response', e)
-          })
-        }).catch(e => {
-          console.error('cannot increase occurences', e)
-        })
-      } catch (e) {
-        console.error(e)
-      }
-    } else if (!this.parent.view.livingOutview.isIn(dest)) {
-      new Promise((resolve, reject) => {
+    const sendResponse = (response, reason = 'none') => {
+      this.parent.send(this.parent.options.n2n.protocol, forward, {
+        type: events.n2n.RESPONSE,
+        response,
+        reason,
+        jobId
+      }, false).then(() => {
+        this._debug(`[${this.parent.id}] response sent for jobId=${jobId}`)
+      }).catch(e => {
+        console.error(`[${this.parent.id}] cannot send response for jobId=${jobId} to id=${forward}`, e)
+      })
+    }
+    if (this.parent.livingOutview.has(dest)) {
+      this.parent.increaseOccurences(dest, true).then(() => {
+        sendResponse(true)
+      }).catch(e => {
+        console.error('cannot increase occurences', e)
+        sendResponse(false, e.message)
+      })
+    } else if (!this.parent.livingOutview.has(dest) && !this.parent.pendingOutview.has(dest)) {
+      const p = () => new Promise((resolve, reject) => {
+        let connected = false
         const tout = setTimeout(() => {
-          reject(new Error('timeout'))
+          if (connected) console.error(new Error('[_bridgeOO] timeout' + connected))
+          reject(new Error('[_bridgeOO] timeout' + connected))
         }, this.parent.options.n2n.timeout)
-        const socket = this.parent.view.createNewSocket(this.parent.options.socket, dest, true)
+        const socket = this.parent.createNewSocket(this.parent.options.socket, dest, true)
         socket.on('error', (error) => {
-          this.view._manageError(error, dest, true, reject)
+          this.parent._manageError(error, dest, true, reject)
         })
         socket.on(events.socket.EMIT_OFFER, (offer) => {
           const off = {
+            jobId,
             initiator: this.parent.id,
             destination: dest,
             forward,
@@ -2285,40 +1898,20 @@ class BridgeSignaling extends SignalingAPI {
           clearTimeout(tout)
           reject(e)
         })
-      }).then(() => {
-        this.parent.view.increaseOccurences(dest, true).then(() => {
-          this.parent.send(this.parent.options.n2n.protocol, forward, {
-            type: events.n2n.RESPONSE,
-            response: true,
-            jobId
-          }, false).catch(e => {
-            console.error('cannot send response to ' + forward, e)
-          })
-        }).catch(e => {
-          console.error('cannot increase occurences for ' + dest, e)
-        })
+      })
+      p().then(() => {
+        sendResponse(true)
       }).catch(e => {
-        this.parent.send(this.parent.options.n2n.protocol, forward, {
-          type: events.n2n.RESPONSE,
-          response: false,
-          jobId
-        }, false).catch(e => {
-          console.error('cannot send response to ' + forward, e)
-        })
+        sendResponse(false, e.message)
       })
     } else {
-      this.parent.send(this.parent.options.n2n.protocol, forward, {
-        type: events.n2n.RESPONSE,
-        response: false,
-        jobId
-      }, false).catch(e => {
-        console.error('cannot send response to ' + forward, e)
-      })
+      this._debug('[%s/bridgeOO] (jobId=%s)it means that there is a pending connection to dest: %s ', this.parent.id, jobId, dest)
+      sendResponse(false, `pending conenction. (from: ${from}, dest:${dest} forward: ${forward})`)
     }
   }
 } // not implemented for the moment
 
-module.exports = BridgeSignaling
+module.exports = BridgeOO
 
 
 /***/ }),
@@ -2333,12 +1926,67 @@ module.exports = BridgeSignaling
 const SignalingAPI = __webpack_require__(/*! ../api */ "./lib/api/index.js").signaling
 const events = __webpack_require__(/*! ../events */ "./lib/events.js")
 const debug = __webpack_require__(/*! debug */ "./node_modules/debug/src/browser.js")
+const errors = __webpack_require__(/*! ../errors */ "./lib/errors/index.js")
+const short = __webpack_require__(/*! short-uuid */ "./node_modules/short-uuid/index.js")
+const translator = short()
 
 class DirectSignaling extends SignalingAPI {
   constructor (options, n2n) {
     super(options)
     this.parent = n2n
     this._debug = debug('n2n:direct')
+    this.on(events.signaling.RECEIVE_OFFER, ({ jobId, initiator, destination, offerType, offer }) => {
+      this._debug('[%s][%s] receive an offer from %s: ', this.parent.id, jobId, initiator, offer)
+      if (!initiator || !destination || !offer || !offerType) throw new Error('PLEASE REPORT, Problem with the offline signaling service. provide at least initiator, destination, type a,d the offer as properties in the object received')
+      // do we have the initiator in our list of connections?
+      if (!this.parent.pendingInview.has(initiator) && offerType === 'new') {
+        // we do have the socket for the moment, create it
+        this.parent.createNewSocket(this.parent.options.socket, initiator, false)
+        // ATTENTION: LISTENERS HAVE TO BE DECLARED ONCE!
+        this.parent.pendingInview.get(initiator).socket.on(events.socket.EMIT_OFFER, (socketOffer) => {
+          const off = {
+            jobId,
+            initiator,
+            destination,
+            offer: socketOffer,
+            offerType: 'back'
+          }
+          this.sendOfferBack(off)
+          // console.log('%s emitted accepted offers: ', jobId, off)
+        })
+        this.parent.pendingInview.get(initiator).socket.on(events.socket.EMIT_OFFER_RENEGOCIATE, (socketOffer) => {
+          console.log('[bridge] receive a negociate offer')
+          const off = {
+            jobId,
+            initiator,
+            destination,
+            offer: socketOffer,
+            offerType: 'back'
+          }
+          this.sendOfferBackRenegociate(off)
+        })
+        // WE RECEIVE THE OFFER ON THE ACCEPTOR
+        // console.log('[first/new] receive an offer to emit to the socket... ', jobId)
+        this.parent.pendingInview.get(initiator).socket.emit(events.socket.RECEIVE_OFFER, offer)
+      } else {
+        // now if it is a new offer, give it to initiator socket, otherwise to destination socket
+        if (offerType === 'new') {
+          // check if it is in pending or living
+          if (this.parent.pendingInview.has(initiator)) {
+            this.parent.pendingInview.get(initiator).socket.emit(events.socket.RECEIVE_OFFER, offer)
+          } else if (this.parent.livingInview.has(initiator)) {
+            this.parent.livingInview.get(initiator).socket.emit(events.socket.RECEIVE_OFFER, offer)
+          }
+        } else if (offerType === 'back') {
+          // check if it is in pending or living
+          if (this.parent.pendingOutview.has(destination)) {
+            this.parent.pendingOutview.get(destination).socket.emit(events.socket.RECEIVE_OFFER, offer)
+          } else if (this.parent.livingOutview.has(destination)) {
+            this.parent.livingOutview.get(destination).socket.emit(events.socket.RECEIVE_OFFER, offer)
+          }
+        }
+      }
+    })
   }
   /**
    * @description Connect.Just connect, oh wait? (-_-)
@@ -2369,6 +2017,128 @@ class DirectSignaling extends SignalingAPI {
     this._debug('[%s] send back the offer to the direct peer: %s', this.parent.id, offer.initiator, offer)
     this.parent.send(this.parent.options.n2n.protocol, offer.initiator, offer).catch(e => {
       console.error('[%s] send back to direct, error', this.parent.id, e)
+    })
+  }
+  /**
+   * Send back an accepted offer to the forwarding peer (for renegociate )
+   * @param  {Object}  offer  the offer to send
+   * @return {Promise}        Promise resolved when the offer has been sent
+   */
+  async sendOfferBackRenegociate (offer) {
+    offer.type = events.n2n.DIRECT_BACK
+    this._debug('[%s][RENEGOCIATE]send back the offer to the direct peer: %s', this.parent.id, offer.initiator, offer)
+    this.parent.send(this.parent.options.n2n.protocol, offer.initiator, offer, false).catch(e => {
+      console.error('[%s] send back to direct, error', this.parent.id, e)
+    })
+  }
+
+  /**
+   * Ask to the peer identified by peerId to establish a connection with us. It add an arc from its outview to our inview.
+   * To not lock the connection forever the function will timeout after the timeout specified in the function (also in options)
+   * So if the connection timed out and the connection is well established.
+   * Good to luck to find a way to solve your problem. (set a bigger timeout (-_-))
+   * @param  {String}  peerId id of the peer that will establish the connection
+   * @return {Promise} Resolve when the connection is successfully established. Reject otherwise, error or timeout, or peer not found.
+   */
+  async connectToUs (peerId, timeout = this.parent.options.n2n.timeout) {
+    if (!this.parent.livingOutview.has(peerId)) {
+      throw errors.peerNotFound(peerId)
+    } else {
+      return new Promise((resolve, reject) => {
+        // first send a message to peerId
+        const jobId = translator.new()
+        const tout = setTimeout(() => {
+          reject(new Error('connectToUs: timeout | peerId: ' + peerId + ' jobId: ' + jobId))
+        }, timeout + 1000) // always put two second to handle a maximum of 2s of delay minimum...
+        this.parent.events.once(jobId, (msg) => {
+          if (msg.response) {
+            clearTimeout(tout)
+            resolve()
+          } else {
+            clearTimeout(tout)
+            // means no
+            reject(new Error('Connection could be established. Something wrong happened. Reason: ' + msg.reason))
+          }
+        })
+        this.parent.send(this.parent.options.n2n.protocol, peerId, {
+          type: events.n2n.CONNECT_TO_US,
+          jobId,
+          id: this.parent.id
+        }, true).then(() => {
+          this._debug('[%s][%s] connectToUs message sent to %s to connect to US..', this.parent.id, jobId, peerId)
+        }).catch(e => {
+          clearTimeout(tout)
+          console.error(e)
+          reject(e)
+        })
+      })
+    }
+  }
+  async _connectToUs ({ id, jobId }) {
+    this._debug('[%s][%s][_connectToUs] receive a connectToUs order from %s...', this.parent.id, jobId, id)
+    const peerId = id
+    const sendResponse = (response, reason) => {
+      // send back the response on the inview, because the message comes from the inview...
+      this.parent.send(this.parent.options.n2n.protocol, peerId, {
+        type: events.n2n.RESPONSE,
+        response,
+        reason,
+        jobId
+      }, false).then(() => {
+        this._debug('[%s][%s][_connectToUs] send response to %s :', this.parent.id, jobId, id, response)
+      }).catch(e => {
+        this._debug('[%s][%s][_connectToUs] cannot send response to %s :', this.parent.id, jobId, id, response)
+      })
+    }
+    const p = () => new Promise((resolve, reject) => {
+      if (!this.parent.livingOutview.has(peerId) && this.parent.livingInview.has(peerId) && !this.parent.pendingOutview.has(peerId)) {
+        // we need to create the connection by exchanging offer between the two peers
+        const tout = setTimeout(() => {
+          reject(new Error(`[${this.parent.id}][${jobId}][to=${id}][_connectToUs] timeout`))
+        }, this.parent.options.n2n.timeout)
+
+        const socket = this.parent.createNewSocket(this.parent.options.socket, peerId, true)
+        socket.on('error', (error) => {
+          this.parent._manageError(error, peerId, true, (e) => {
+            this._debug('[%s][%s][_connectToUs] receive an error during the connection %s...', this.parent.id, jobId, id, e)
+            reject(e)
+          })
+        })
+        socket.on(events.socket.EMIT_OFFER, (offer) => {
+          const off = {
+            jobId,
+            initiator: this.parent.id,
+            destination: peerId,
+            offer,
+            offerType: 'new'
+          }
+          this.sendOfferTo(off)
+        })
+        socket.connect().then(() => {
+          clearTimeout(tout)
+          resolve()
+        }).catch(e => {
+          clearTimeout(tout)
+          reject(e)
+        })
+      } else if (this.parent.livingOutview.has(peerId) && this.parent.livingOutview.get(peerId).socket.status !== 'disconnected') {
+        this._debug('[%s][%s][_connectToUs] the peer is in our outview so, just increase occurences %s...', this.parent.id, jobId, id)
+        this.parent.connectFromUs(peerId).then(() => {
+          this._debug('[%s][%s][_connectToUs] Increase occurences has been done ...', this.parent.id, jobId, id)
+          resolve()
+        }).catch(e => {
+          this._debug('[%s][%s][_connectToUs] Increase occurences has crashed ...', this.parent.id, jobId, id)
+          reject(e)
+        })
+      } else {
+        reject(new Error('pending connection'))
+      }
+    })
+    p().then(() => {
+      sendResponse(true)
+    }).catch(e => {
+      this._debug('[%s][%s][_connectToUs] is errored %s...', this.id, jobId, id, e)
+      sendResponse(false, e.message)
     })
   }
 } // not implemented for the moment
@@ -2408,6 +2178,57 @@ const SignalingAPI = __webpack_require__(/*! ../api */ "./lib/api/index.js").sig
 const events = __webpack_require__(/*! ../events */ "./lib/events.js")
 
 class OfflineSignaling extends SignalingAPI {
+  constructor (options, n2n) {
+    super(options)
+    this._debug = (__webpack_require__(/*! debug */ "./node_modules/debug/src/browser.js"))('n2n:offline')
+    this.parent = n2n
+    this.on(events.signaling.RECEIVE_OFFER, ({ jobId, initiator, destination, type, offer }) => {
+      // do we have the initiator in our list of connections?
+      this._debug('[%s] receive an offline offer ', this.parent.id, { jobId, initiator, destination, type, offer })
+      if (!this.parent.pendingInview.has(initiator) && type === 'new') {
+        // we do have the socket for the moment, create it
+        this.parent.createNewSocket(this.parent.options.socket, initiator, false)
+        this.parent.pendingInview.get(initiator).socket.on(events.socket.EMIT_OFFER, (socketOffer) => {
+          this.sendOffer({
+            jobId,
+            initiator,
+            destination,
+            offer: socketOffer,
+            type: 'back'
+          })
+        })
+        this.parent.pendingInview.get(initiator).socket.on(events.socket.EMIT_OFFER_RENEGOCIATE, (socketOffer) => {
+          const off = {
+            jobId,
+            initiator,
+            destination,
+            offer: socketOffer,
+            offerType: 'back'
+          }
+          this.parent.signaling.direct.sendOfferBackRenegociate(off)
+        })
+        // WE RECEIVE THE OFFER ON THE ACCEPTOR
+        this.parent.pendingInview.get(initiator).socket.emit(events.socket.RECEIVE_OFFER, offer)
+      } else {
+        // now if it is a new offer, give it to initiator socket, otherwise to destination socket
+        if (type === 'new') {
+          // check if it is in pending or living
+          if (this.parent.pendingInview.has(initiator)) {
+            this.parent.pendingInview.get(initiator).socket.emit(events.socket.RECEIVE_OFFER, offer)
+          } else if (this.parent.livingInview.has(initiator)) {
+            this.parent.livingInview.get(initiator).socket.emit(events.socket.RECEIVE_OFFER, offer)
+          }
+        } else if (type === 'back') {
+          // check if it is in pending or living
+          if (this.parent.pendingOutview.has(destination)) {
+            this.parent.pendingOutview.get(destination).socket.emit(events.socket.RECEIVE_OFFER, offer)
+          } else if (this.parent.livingOutview.has(destination)) {
+            this.parent.livingOutview.get(destination).socket.emit(events.socket.RECEIVE_OFFER, offer)
+          }
+        }
+      }
+    })
+  }
   async connect () {
     this.emit('connect')
   }
@@ -2436,6 +2257,55 @@ const short = __webpack_require__(/*! short-uuid */ "./node_modules/short-uuid/i
 const translator = short()
 
 class OnlineSignaling extends SignalingAPI {
+  constructor (options, n2n) {
+    super(options)
+    this.parent = n2n
+    this.on(events.signaling.RECEIVE_OFFER, ({ jobId, initiator, destination, type, offer }) => {
+      if (!initiator || !destination || !offer || !type) throw new Error('PLEASE REPORT, Problem with the offline signaling service. provide at least initiator, destination, type a,d the offer as properties in the object received')
+      if (!this.parent.livingInview.has(initiator) && type === 'new') {
+        // we do have the socket for the moment, create it
+        this.parent.createNewSocket(this.parent.options.socket, initiator, false)
+        // ATTENTION: LISTENERS HAVE TO BE DECLARED ONCE!
+        this.parent.pendingInview.get(initiator).socket.on(events.socket.EMIT_OFFER, (socketOffer) => {
+          this.sendOffer({
+            initiator,
+            destination,
+            offer: socketOffer,
+            type: 'back'
+          })
+        })
+        this.parent.pendingInview.get(initiator).socket.on(events.socket.EMIT_OFFER_RENEGOCIATE, (socketOffer) => {
+          console.log('[bridge] receive a negociate offer')
+          const off = {
+            jobId,
+            initiator,
+            destination,
+            offer: socketOffer,
+            offerType: 'back'
+          }
+          this.parent.signaling.direct.sendOfferBackRenegociate(off)
+        })
+        this.parent.pendingInview.get(initiator).socket.emit(events.socket.RECEIVE_OFFER, offer)
+      } else {
+        // now if it is a new offer, give it to initiator socket, otherwise to destination socket
+        if (type === 'new') {
+          // check if it is in pending or living
+          if (this.parent.pendingInview.has(initiator)) {
+            this.parent.pendingInview.get(initiator).socket.emit(events.socket.RECEIVE_OFFER, offer)
+          } else if (this.parent.livingInview.has(initiator)) {
+            this.parent.livingInview.get(initiator).socket.emit(events.socket.RECEIVE_OFFER, offer)
+          }
+        } else if (type === 'back') {
+          // check if it is in pending or living
+          if (this.parent.pendingOutview.has(destination)) {
+            this.parent.pendingOutview.get(destination).socket.emit(events.socket.RECEIVE_OFFER, offer)
+          } else if (this.parent.livingOutview.has(destination)) {
+            this.parent.livingOutview.get(destination).socket.emit(events.socket.RECEIVE_OFFER, offer)
+          }
+        }
+      }
+    })
+  }
   /**
    * @description Connect the signaling service to a Socket.io signaling server (see the server in ./server)
    * @param  {Object}  options options for the connection if needed
@@ -2579,8 +2449,6 @@ module.exports = {
 const Socket = __webpack_require__(/*! ../api */ "./lib/api/index.js").socket
 const lmerge = __webpack_require__(/*! lodash.merge */ "./node_modules/lodash.merge/index.js")
 const SimplePeer = __webpack_require__(/*! simple-peer */ "./node_modules/simple-peer/index.js")
-const short = __webpack_require__(/*! short-uuid */ "./node_modules/short-uuid/index.js")
-const translator = short()
 
 /**
  * @class
@@ -2599,16 +2467,11 @@ class SimplePeerWrapper extends Socket {
       }
     }, options)
     super(options)
-    this.socketId = translator.new()
-    this.statistics = {
-      offerSent: 0,
-      offerReceived: 0
-    }
   }
 
   _receiveOffer (offer) {
     this.statistics.offerReceived++
-    this._debug('[socket:%s] the socket just received an offer', this.socketId, this.statistics, this.options.initiator, offer)
+    this._debug('[socket:%s] the socket just received an offer (status=%s)', this.socketId, this.status, this.statistics, this.options.initiator, offer)
     this._create()
     this.__socket.signal(offer)
   }
@@ -2620,27 +2483,22 @@ class SimplePeerWrapper extends Socket {
       } else {
         this.__socket = new SimplePeer(options)
       }
-      this._debug('Simple-peer Socket options set: ', options)
       this.status = 'connecting'
-      this.__socket.on('connect', () => {
-        this.status = 'connected'
-        this.emit('connect')
+      this.__socket.once('connect', () => {
+        this.signalConnect()
       })
       this.__socket.on('signal', (offer) => {
-        this.statistics.offerSent++
-        this._debug('[socket:%s] Send an accepted offer: ', this.socketId, this.statistics, offer)
         this.emitOffer(offer)
       })
       this.__socket.on('close', () => {
-        this._debug('socket closed.')
-        this.emit('close')
+        this.signalDisconnect()
       })
       this.__socket.on('error', (error) => {
+        this.signalDisconnect()
         this.__socket.destroy()
         this._manageErrors(error)
       })
       this.__socket.on('data', (...args) => {
-        this._debug('[socket:%s] receiving data...', this.socketId, ...args)
         this._receiveData(...args)
       })
     }
@@ -2656,14 +2514,14 @@ class SimplePeerWrapper extends Socket {
         this.__socket = new SimplePeer(options)
       }
       this.__socket.on('signal', (offer) => {
-        this.statistics.offerSent++
         this.emitOffer(offer)
       })
       this.__socket.once('connect', () => {
-        this.status = 'connected'
+        this.signalConnect()
         resolve()
       })
       this.__socket.once('error', (error) => {
+        this.signalDisconnect()
         this.__socket.destroy()
         this._manageErrors(error)
       })
@@ -2671,25 +2529,18 @@ class SimplePeerWrapper extends Socket {
         this._receiveData(...args)
       })
       this.__socket.once('close', () => {
-        this._debug('socket closed.')
-        this.emit('close')
+        this.signalDisconnect()
       })
     })
   }
 
-  _manageErrors (...args) {
-    this._debug('Error on the socket: ', ...args)
-    this.emit('error', ...args)
-  }
-
   async _send (data) {
-    this._debugMessage('[socket] sending a message: ', data)
     this._create()
     try {
       this.__socket.send(data)
     } catch (e) {
-      console.log(this, this.status, e)
-      throw new Error('Error when sending the message on the WebRTC socket:', e)
+      console.log(this, this.status, e.message)
+      throw e
     }
   }
 
@@ -2907,6 +2758,33 @@ module.exports = class SimplePeerAbstract extends EventEmitter {
 }
 
 /* WEBPACK VAR INJECTION */}.call(this, __webpack_require__(/*! ./../../node_modules/process/browser.js */ "./node_modules/process/browser.js")))
+
+/***/ }),
+
+/***/ "./lib/view.js":
+/*!*********************!*\
+  !*** ./lib/view.js ***!
+  \*********************/
+/*! no static exports found */
+/***/ (function(module, exports) {
+
+class View extends Map {
+  available (id) {
+    if (super.has(id)) {
+      const node = super.get(id)
+      if ((node.occurences - node.lock) > 0 && node.socket.status === 'connected') {
+        return true
+      } else {
+        return false
+      }
+    } else {
+      return false
+    }
+  }
+}
+
+module.exports = View
+
 
 /***/ }),
 
@@ -12817,6 +12695,90 @@ function plural(ms, msAbs, n, name) {
   var isPlural = msAbs >= n * 1.5;
   return Math.round(ms / n) + ' ' + name + (isPlural ? 's' : '');
 }
+
+
+/***/ }),
+
+/***/ "./node_modules/object-sizeof/byte_size.js":
+/*!*************************************************!*\
+  !*** ./node_modules/object-sizeof/byte_size.js ***!
+  \*************************************************/
+/*! no static exports found */
+/***/ (function(module, exports) {
+
+/**
+ * Byte sizes are taken from ECMAScript Language Specification
+ * http://www.ecma-international.org/ecma-262/5.1/
+ * http://bclary.com/2004/11/07/#a-4.3.16
+ */
+
+module.exports = {
+    STRING: 2,
+    BOOLEAN: 4,
+    NUMBER: 8
+};
+
+/***/ }),
+
+/***/ "./node_modules/object-sizeof/index.js":
+/*!*********************************************!*\
+  !*** ./node_modules/object-sizeof/index.js ***!
+  \*********************************************/
+/*! no static exports found */
+/***/ (function(module, exports, __webpack_require__) {
+
+"use strict";
+// Copyright 2014 Andrei Karpushonak
+
+
+
+var ECMA_SIZES  = __webpack_require__(/*! ./byte_size */ "./node_modules/object-sizeof/byte_size.js");
+var Buffer = __webpack_require__(/*! buffer */ "./node_modules/buffer/index.js").Buffer;
+
+/**
+ * Main module's entry point
+ * Calculates Bytes for the provided parameter
+ * @param object - handles object/string/boolean/buffer
+ * @returns {*}
+ */
+function sizeof(object) {
+    if (object !== null && typeof (object) === 'object') {
+      if (Buffer.isBuffer(object)) {
+        return object.length;
+      }
+      else {
+        var bytes = 0;
+        for (var key in object) {
+
+          if(!Object.hasOwnProperty.call(object, key)) {
+            continue;
+          }
+
+          bytes += sizeof(key);
+          try {
+            bytes += sizeof(object[key]);
+          } catch (ex) {
+            if(ex instanceof RangeError) {
+              // circular reference detected, final result might be incorrect
+              // let's be nice and not throw an exception
+              bytes = 0;
+            }
+          }
+        }
+        return bytes;
+      }
+    } else if (typeof (object) === 'string') {
+      return object.length * ECMA_SIZES.STRING;
+    } else if (typeof (object) === 'boolean') {
+      return ECMA_SIZES.BOOLEAN;
+    } else if (typeof (object) === 'number') {
+      return ECMA_SIZES.NUMBER;
+    } else {
+      return 0;
+    }
+}
+
+module.exports = sizeof;
 
 
 /***/ }),

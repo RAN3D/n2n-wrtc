@@ -3,7 +3,7 @@ const assert = require('assert')
 const utils = require('../lib/utils')
 
 let ss
-describe('[Neighborhood] Online connection', function () {
+describe('[N2N] Online connection', function () {
   this.timeout(2 * 60 * 1000)
   before((done) => {
     utils.startServer().then(signaling => {
@@ -37,6 +37,14 @@ describe('[Neighborhood] Online connection', function () {
     const neigh = await a.connect()
     assert.strictEqual(neigh, null)
     const neigh2 = await b.connect()
+    assert.strictEqual(a.livingOutview.size, 0)
+    assert.strictEqual(a.livingInview.size, 1)
+    assert.strictEqual(a.pendingOutview.size, 0)
+    assert.strictEqual(a.pendingInview.size, 0)
+    assert.strictEqual(b.livingOutview.size, 1)
+    assert.strictEqual(b.livingInview.size, 0)
+    assert.strictEqual(b.pendingOutview.size, 0)
+    assert.strictEqual(b.pendingInview.size, 0)
     assert.strictEqual(neigh2, a.id)
     assert.strictEqual(a.getNeighboursIds().length, 0) // inview 0
     assert.strictEqual(b.getNeighboursIds().length, 1) // outview 1

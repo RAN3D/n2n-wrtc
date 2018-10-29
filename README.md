@@ -164,3 +164,26 @@ peer-sampling protocols.
 - [ ] Encapsulate each message sent for distinguish admin messages from application messages
 - [ ] Minimize the encapsulation
 - [ ] Control the size of the object sent and create a mechanism to handle bigger files (chunkification)
+
+
+## Turn and Stun servers (for tests purposes only)
+
+For production purposes see (https://www.twilio.com/stun-turn)
+
+- a stun server is available through `node-stun-server` [node-stun](https://github.com/enobufs/stun)
+  - check the node-stun.ini in tests/stun folder.
+  ```javascript
+  const iceServers = {
+    url: 'stun:127.0.0.1:3478'
+  }
+  ```
+
+- a turn server is available through a Dockerfile
+  - check the Dockerfile in the tests/turn folder.
+  ```javascript
+  const iceServers = {
+    urls: 'turn:127.0.0.1:3478?transport=udp'
+    username: 'username',
+    password: 'password'
+  }
+  ```
