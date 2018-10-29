@@ -161,4 +161,29 @@ peer-sampling protocols.</p>
 <li class="docma task-item"><input type="checkbox" disabled=""> &nbsp;Minimize the encapsulation</li>
 <li class="docma task-item"><input type="checkbox" disabled=""> &nbsp;Control the size of the object sent and create a mechanism to handle bigger files (chunkification)</li>
 </ul>
+<h2 id="turn-and-stun-servers--for-tests-purposes-only-">Turn and Stun servers (for tests purposes only)</h2>
+<hr />
+<p>For production purposes see (<a href="https://www.twilio.com/stun-turn">https://www.twilio.com/stun-turn</a>)</p>
+<ul>
+<li><p>a stun server is available through <code>node-stun-server</code> <a href="https://github.com/enobufs/stun">node-stun</a></p>
+<ul>
+<li>check the node-stun.ini in tests/stun folder.<pre><code class="lang-javascript">const iceServers = {
+url: 'stun:127.0.0.1:3478'
+}
+</code></pre>
+</li>
+</ul>
+</li>
+<li><p>a turn server is available through a Dockerfile</p>
+<ul>
+<li>check the Dockerfile in the tests/turn folder.<pre><code class="lang-javascript">const iceServers = {
+urls: 'turn:127.0.0.1:3478?transport=udp'
+username: 'username',
+password: 'password'
+}
+</code></pre>
+</li>
+</ul>
+</li>
+</ul>
 </body></html>
