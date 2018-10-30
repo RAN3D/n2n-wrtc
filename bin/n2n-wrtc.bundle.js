@@ -96,282 +96,6 @@ return /******/ (function(modules) { // webpackBootstrap
 /************************************************************************/
 /******/ ({
 
-/***/ "./lib/api/index.js":
-/*!**************************!*\
-  !*** ./lib/api/index.js ***!
-  \**************************/
-/*! no static exports found */
-/***/ (function(module, exports, __webpack_require__) {
-
-module.exports = {
-  socket: __webpack_require__(/*! ./socket */ "./lib/api/socket.js"),
-  signaling: __webpack_require__(/*! ./signaling */ "./lib/api/signaling.js")
-}
-
-
-/***/ }),
-
-/***/ "./lib/api/signaling.js":
-/*!******************************!*\
-  !*** ./lib/api/signaling.js ***!
-  \******************************/
-/*! no static exports found */
-/***/ (function(module, exports, __webpack_require__) {
-
-const errors = __webpack_require__(/*! ../errors */ "./lib/errors/index.js")
-const EventEmitter = __webpack_require__(/*! events */ "./node_modules/events/events.js")
-const events = __webpack_require__(/*! ../events */ "./lib/events.js")
-
-class Signaling extends EventEmitter {
-  constructor (options = {}) {
-    super()
-    this.options = options
-  }
-
-  /**
-   * @description [**To Impelment**] Connect the signaling service
-   * @param  {Object}  options options for the connection if needed
-   * @return {Promise}            Promise resolved when the connection succeeded
-   */
-  async connect (options) {
-    return Promise.reject(errors.nyi())
-  }
-
-  /**
-   * Get a new peer from the signaling service, can be undefined or a string representing the peer id to connect with
-   * @return {Promise}        Promise resolved with the peerId or undefined as result or reject with an error
-   */
-  async getNewPeer () {
-    return Promise.reject(errors.nyi())
-  }
-
-  /**
-   * Send an offer to the signaling service
-   * @param  {Object}  offer  the offer to send to the signaling server
-   * @return {Promise}        Promise resolved when the offer has been sent
-   */
-  async sendOffer (offer) {
-    return Promise.reject(errors.nyi())
-  }
-
-  /**
-   * Method called when an offer has been received always with the format {initiator, destination, offer}
-   * @param  {Object}  offer the offer received
-   * @return {void}
-   */
-  receiveOffer (offer) {
-    this.emit(events.signaling.RECEIVE_OFFER, offer)
-  }
-}
-
-module.exports = Signaling
-
-
-/***/ }),
-
-/***/ "./lib/api/socket.js":
-/*!***************************!*\
-  !*** ./lib/api/socket.js ***!
-  \***************************/
-/*! no static exports found */
-/***/ (function(module, exports, __webpack_require__) {
-
-const errors = __webpack_require__(/*! ../errors */ "./lib/errors/index.js")
-const events = __webpack_require__(/*! ../events */ "./lib/events.js")
-const EventEmitter = __webpack_require__(/*! events */ "./node_modules/events/events.js")
-const sizeof = __webpack_require__(/*! object-sizeof */ "./node_modules/object-sizeof/index.js")
-const lmerge = __webpack_require__(/*! lodash.merge */ "./node_modules/lodash.merge/index.js")
-const short = __webpack_require__(/*! short-uuid */ "./node_modules/short-uuid/index.js")
-const translator = short()
-
-/**
- * @class
- * @classdesc This Abstract class represent a socket which can be implemented with any socket compatible with this API.
- * For example you can implement this class with a webrtc socket such as simple-peer
- * @type {class}
- */
-class Socket extends EventEmitter {
-  /**
-   * @description Constructor of the Socket class, the connect method just initialize a socket and wait for an accepted offer
-   * @param {Object} options   any options needed
-   */
-  constructor (options = {}) {
-    super()
-    this.socketId = translator.new()
-    this._debug = (__webpack_require__(/*! debug */ "./node_modules/debug/src/browser.js"))('n2n:socket')
-    this._debugMessage = (__webpack_require__(/*! debug */ "./node_modules/debug/src/browser.js"))('n2n:message')
-    this.options = lmerge({ chunks: 16000 }, options)
-    this.status = 'disconnected' // connected or disconnected
-    this.on(events.socket.RECEIVE_OFFER, this._receiveOffer)
-    this.buffer = []
-    this.statistics = {
-      offerSent: 0,
-      offerReceived: 0
-    }
-  }
-
-  /**
-   * Review the buffer of data sent
-   * @return {void}
-   */
-  reviewBuffer () {
-    let data
-    while ((data = this.buffer.shift())) {
-      this.send(data)
-    }
-  }
-
-  /**
-   * Signal to the supervisor of the socket that this socket is conencted and review the internal buffer
-   * @return {void}
-   */
-  signalConnect () {
-    this.status = 'connected'
-    this.emit('connect')
-    this.reviewBuffer()
-  }
-
-  /**
-   * Signal to the supervisor of the socket that this socket is disconnected
-   * @return {void}
-   */
-  signalDisconnect () {
-    if (this.status === 'connected') {
-      this.status = 'disconnected'
-      this.emit('close')
-    }
-  }
-
-  /**
-   * @description To Implement: you will receive all offers here, do what you want with them, Usefull for connection if you are using simple-peer or webrtc
-   * @param  {Object} offer offer received from someone who want to connect to us
-   * @return {void}
-   */
-  _receiveOffer (offer) {
-    throw errors.nyi()
-  }
-
-  /**
-   * Send an offer to the supervisor of the socket for sending the offer (perhaps used by a signaling service)
-   * @param  {Object} offer [description]
-   * @return {void}       [description]
-   */
-  emitOffer (offer) {
-    this.statistics.offerSent++
-    this._debug('[socket:%s] Send an accepted offer (status=%s): ', this.socketId, this.status, offer, this.statistics)
-    if (this.status === 'connected') {
-      console.log('The socket is connected but you continue to emit offers...', offer, this.status, this.__socket._channel.readyState)
-      this.emit(events.socket.EMIT_OFFER_RENEGOCIATE, offer)
-    } else {
-      this.emit(events.socket.EMIT_OFFER, offer)
-    }
-  }
-
-  /**
-   * @description [**To implement**]
-   * Connect the socket to a peer you have to provide.
-   * You have to implement this method and return a promise that resolve when the connection is completed.
-   * @param  {Object} options options passed to the function
-   * @return {Promise}         Promise resolved when the socket is connected
-   */
-  _connect (options) {
-    return Promise.reject(errors.nyi())
-  }
-
-  /**
-   * @description [**To implement**]
-   * Send a message on the socket to the peer which is connected to this socket.
-   * You have to implement this method and return a promise that resolve when the message is sent
-   * @param  {Object} data    data to send
-   * @param  {Object} options options
-   * @return {Promise}         Promise resolved when the message is sent
-   */
-  _send (data, options) {
-    return Promise.reject(errors.nyi())
-  }
-
-  /**
-   * Callback called when data are received
-   * Default bbehavior: emit data on the event bus when received with the event 'data'
-   * @param  {Object} data data received
-   * @return {void}
-   */
-  _receiveData (data) {
-    if (this.status === 'connecting') {
-      this.signalConnect()
-    }
-    this._debug('[socket:%s] receiving data, size=%f', this.socketId, sizeof(data))
-    this.emit('data', data)
-  }
-
-  _manageErrors (...args) {
-    this._debug('Error on the socket: ', ...args)
-    this.emit('error', ...args)
-  }
-
-  /**
-   * @description [**To implement**]
-   * Destroy/disconnect the socket
-   * You have to implement this method and return a promise that resolve when the socket is destroyed
-   * @return {Promise} Promise resolved when the socket is destroyed/disconnected
-   */
-  _disconnect () {
-    return Promise.reject(errors.nyi())
-  }
-
-  /**
-  * @description Connect the socket to a peer using the signaling service provided by the supervisor of the socket.
-  * @param  {Object} options options passed to the function
-  * @return {Promise}         Promise resolved when the socket is connected
-   */
-  async connect (options = this.options) {
-    this.status = 'connecting'
-    return this._connect(options).then((res) => {
-      this.signalConnect()
-      return res
-    }).catch(e => e)
-  }
-
-  /**
-   * @description Send a message on the socket to the peer which is connected to this socket.
-   * @param  {Object} data    data to send
-   * @param  {Object} options options
-   * @return {Promise}         Promise resolved when the message is sent
-   */
-  async send (data, options) {
-    const size = sizeof(data)
-    this._debug('[socket:%s] Data size sent (max allowed=%f Bytes): %f', this.socketId, this.options.chunks, size)
-    if (size > this.options.chunks) {
-      return Promise.reject(new Error('Your data is too big. Max allowed: ' + this.options.chunks))
-    } else {
-      if (this.status === 'connected') {
-        return this._send(data, options)
-      } else if (this.status === 'connecting') {
-        this.buffer.push(data)
-      } else if (this.status === 'disconnected') {
-        throw new Error('socket disconnected.')
-      }
-    }
-  }
-
-  /**
-   * @description Destroy/disconnect the socket
-   * @return {Promise} Promise resolved when the socket is destroyed/disconnected
-   */
-  async disconnect (options) {
-    this.status = 'disconnected'
-    return this._disconnect(options).then((res) => {
-      this.status = 'disconnected'
-      return res
-    }).catch(e => e)
-  }
-}
-
-module.exports = Socket
-
-
-/***/ }),
-
 /***/ "./lib/errors/index.js":
 /*!*****************************!*\
   !*** ./lib/errors/index.js ***!
@@ -492,8 +216,7 @@ module.exports = {
 module.exports = {
   N2N: __webpack_require__(/*! ./main */ "./lib/main.js"),
   sockets: __webpack_require__(/*! ./sockets */ "./lib/sockets/index.js"),
-  signaling: __webpack_require__(/*! ./signaling */ "./lib/signaling/index.js"),
-  api: __webpack_require__(/*! ./api */ "./lib/api/index.js")
+  signaling: __webpack_require__(/*! ./signaling */ "./lib/signaling/index.js")
 }
 
 
@@ -541,6 +264,9 @@ class N2N extends EventEmitter {
     this._debugMessage = (__webpack_require__(/*! debug */ "./node_modules/debug/src/browser.js"))('n2n:message')
     // set the id, pass in option or by default an initialized one
     this.id = this.options.n2n.id
+    // just a map for checking if there is more pending than expected.
+    this._pending = new Map()
+    this._all = new Map()
     // init the pending(inview/outview)
     this.pendingInview = new Map()
     this.pendingOutview = new Map()
@@ -689,7 +415,6 @@ class N2N extends EventEmitter {
         this._debug('[%s] %s -> %s !', this.id, this.id, to)
         return this.connectFromUs(to)
       } else {
-        console.log('Need to be in our outview')
         return Promise.reject(new Error(to + ' need to be in our outview.'))
       }
     } else {
@@ -775,7 +500,6 @@ class N2N extends EventEmitter {
       this._debugMessage('[%s/n2n] sending a message on the inview to:  %s', this.id, peerId, message)
       return this.livingInview.get(peerId).socket.send(this._serialize(message))
     } else {
-      console.log('living=', this.livingInview)
       throw new Error('[' + this.id + '] Peer not found in the inview: ' + peerId)
     }
   }
@@ -784,7 +508,6 @@ class N2N extends EventEmitter {
       this._debugMessage('[%s/n2n] sending a message on the outview to:  %s', this.id, peerId, message)
       return this.livingOutview.get(peerId).socket.send(this._serialize(message))
     } else {
-      console.log('living=', this.livingOutview)
       throw new Error('[' + this.id + '] Peer not found in the outview: ' + peerId)
     }
   }
@@ -802,13 +525,12 @@ class N2N extends EventEmitter {
         const p = this.livingOutview.get(userId)
         if (p.occurences === 0) {
           throw new Error('Occurences = 0, Maybe the peer is already being disconnected.')
-        }
-        // check if occurences - lock is > 0
-        const available = (p.occurences - p.lock) > 0
-        if (available) {
-          return this.decreaseOccOutview(userId)
         } else {
-          throw new Error('Peer not available, because connections are locked.')
+          if (this.livingOutview.available(userId)) {
+            return this.decreaseOccOutview(userId)
+          } else {
+            throw new Error('Peer not available, because connections are locked.')
+          }
         }
       }
     } else {
@@ -901,20 +623,18 @@ class N2N extends EventEmitter {
       throw errors.peerNotFound(peerId)
     } else {
       const p = this.livingOutview.get(peerId)
-      if (p.lock > 0 && p.occurences === 0) {
+      if ((p.lock > 0 && p.occurences === 0)) {
         throw new Error('lock cannot be higher than the number of occurences when a deletion is performed.')
-      } else if (p.occurences === 0) {
-        // try to remove the connection
-        this.livingOutview.delete(peerId)
-        p.socket.disconnect()
-        throw new Error('The peer cant be at occurences=0 in this phase, please report this error.')
-      } else {
+      } else if (p.occurences > 0 && p.occurences > p.lock) {
         this.livingOutview.get(peerId).occurences--
-        this._signalDisconnect(peerId, true)
-        if (p.occurences === 0) {
-          this.livingOutview.delete(peerId)
+        if (this.livingOutview.get(peerId).occurences === 0) {
+          this._signalDisconnect(peerId, true)
           return p.socket.disconnect()
+        } else {
+          this._signalDisconnect(peerId, true) // signal disconnect
         }
+      } else {
+        throw new Error('PLEASE REPORT: decreaseOccOutview')
       }
     }
   }
@@ -941,11 +661,40 @@ class N2N extends EventEmitter {
    */
   createNewSocket (options, id, outview = false, timeout = this.options.n2n.timeout) {
     const newSocket = new this.options.n2n.SocketClass(options)
-    this._debug('[%s] new socket created: %s', this.id, newSocket.socketId)
+    const sid = newSocket.socketId
+    // const s = {
+    //   from: this.id,
+    //   to: id,
+    //   socket: newSocket
+    // }
+    // this._pending.set(sid, s)
+    // this._all.set(sid, s)
+    this._debug('[%s] new socket created: %s with timeout', this.id, newSocket.socketId, timeout)
+    const tout = setTimeout(() => {
+      // deletion, the sid need to be the same as declared... otherwise report this error.
+      if (!outview) {
+        if (this.pendingInview.get(id).socket.socketId === sid) {
+          // this.pendingInview.delete(id)
+          this._deletePending(id, outview)
+        } else {
+          console.error(new Error('SID not equaled. Please report this error.'))
+        }
+      } else {
+        if (this.pendingOutview.get(id).socket.socketId === sid) {
+          // this.pendingOutview.delete(id)
+          this._deletePending(id, outview)
+        } else {
+          console.error(new Error('SID not equaled. Please report this error.'))
+        }
+      }
+    }, timeout)
     newSocket.status = 'connecting'
     newSocket.once('connect', () => {
+      this._pending.delete(sid)
+      clearTimeout(tout)
       if (!outview) {
-        this.pendingInview.delete(id)
+        // this.pendingInview.delete(id)
+        this._deletePending(id, outview)
         this.livingInview.set(id, {
           socket: newSocket,
           occurences: 1,
@@ -953,7 +702,8 @@ class N2N extends EventEmitter {
         })
         this._signalConnect(id, false)
       } else {
-        this.pendingOutview.delete(id)
+        // this.pendingOutview.delete(id)
+        this._deletePending(id, outview)
         this.livingOutview.set(id, {
           socket: newSocket,
           occurences: 1,
@@ -965,8 +715,8 @@ class N2N extends EventEmitter {
     newSocket.on('data', (data) => {
       this.__receive(id, data)
     })
-    newSocket.once('close', () => {
-      this._manageClose(id, outview)
+    newSocket.once('close', (socketId) => {
+      this._manageClose(id, outview, socketId)
     })
     newSocket.once('error', error => {
       this._manageError(error, id, outview)
@@ -1000,30 +750,11 @@ class N2N extends EventEmitter {
     if (error.message === 'Ice connection failed.') {
       this._debug('Chrome disconnection: ', peerId, error)
     } else {
-      console.log(`[%s] Error of the socket: (%s), this is just a log. The error is catched. [reject:${typeof reject}]`, this.id, peerId, error)
+      this._debug(`[%s] Error of the socket: (%s), this is just a log. The error is catched. [reject:${typeof reject}]`, this.id, peerId, error)
     }
     if (reject) {
-      // manage error when living
-      if (outview && this.pendingOutview.has(peerId)) {
-        this._debug('[%s] socket errored, need to disconnect the socket...', this.id)
-        this.pendingOutview.get(peerId).socket.disconnect()
-        this.pendingOutview.delete(peerId)
-      } else if (!outview && this.pendingInview.has(peerId)) {
-        this._debug('[%s] socket errored, need to disconnect the socket...', this.id)
-        this.pendingInview.get(peerId).socket.disconnect()
-        this.pendingInview.delete(peerId)
-      }
       // if pending reject the connection
       reject(error)
-    } else {
-      // manage error when living
-      if (outview && this.livingOutview.has(peerId)) {
-        this._debug('[%s] socket errored, need to disconnect the socket...', this.id)
-        this.livingOutview.get(peerId).socket.disconnect()
-      } else if (!outview && this.livingInview.has(peerId)) {
-        this._debug('[%s] socket errored, need to disconnect the socket...', this.id)
-        this.livingInview.get(peerId).socket.disconnect()
-      }
     }
   }
 
@@ -1031,23 +762,49 @@ class N2N extends EventEmitter {
    * @description On connection closed, signal if its an inview or an outview arc. Remove the socket from its (in/out)view.
    * @param  {String}  peerId          id of the peer
    * @param  {Boolean} [outview=false] is in the outview or not
+   * @param  {String} socketId Identifier of the socket
    * @return {void}
    */
-  _manageClose (peerId, outview = false) {
+  _manageClose (peerId, outview = false, socketId) {
     if (outview && this.livingOutview.has(peerId)) {
       const p = this.livingOutview.get(peerId)
-      this.livingOutview.delete(peerId)
-      for (let i = 0; i < (p.occurences); ++i) {
-        this._signalDisconnect(peerId, outview, true)
-      }
+      // check if it is the same socketId
+      if (p.socket.socketId === socketId) {
+        this._debug('[%s] close outview: ', this.id, peerId, outview, p)
+        for (let i = 0; i < (p.occurences); ++i) {
+          this._signalDisconnect(peerId, outview)
+        }
+        this._deleteLiving(peerId, outview)
+      } // else, nothing to do
     } else if (!outview && this.livingInview.has(peerId)) {
       const p = this.livingInview.get(peerId)
-      this.livingInview.delete(peerId)
-      for (let i = 0; i < (p.occurences); ++i) {
-        this._signalDisconnect(peerId, outview, true)
+      if (p.socket.socketId === socketId) {
+        this._signalDisconnect(peerId, outview)
+        this._debug('[%s] close inview: ', this.id, peerId, outview)
+        this._deleteLiving(peerId, outview)
       }
     } else {
       console.log('[socket does not exist] Connection closed', peerId)
+    }
+  }
+
+  _deleteLiving (id, outview) {
+    if (outview) {
+      this._debug('[%s] deleting outview living entry:', this.id, id)
+      this.livingOutview.delete(id)
+    } else {
+      this._debug('[%s] deleting inview living entry:', this.id, id)
+      this.livingInview.delete(id)
+    }
+  }
+
+  _deletePending (id, outview) {
+    if (outview) {
+      this._debug('[%s] deleting outview pending entry:', this.id, id)
+      this.pendingOutview.delete(id)
+    } else {
+      this._debug('[%s] deleting inview pending entry:', this.id, id)
+      this.pendingInview.delete(id)
     }
   }
 
@@ -1256,7 +1013,7 @@ module.exports = N2N
 /*! no static exports found */
 /***/ (function(module, exports, __webpack_require__) {
 
-const SignalingAPI = __webpack_require__(/*! ../api */ "./lib/api/index.js").signaling
+const SignalingAPI = __webpack_require__(/*! ./signaling */ "./lib/signaling/signaling.js")
 const events = __webpack_require__(/*! ../events */ "./lib/events.js")
 const debug = __webpack_require__(/*! debug */ "./node_modules/debug/src/browser.js")
 const short = __webpack_require__(/*! short-uuid */ "./node_modules/short-uuid/index.js")
@@ -1270,7 +1027,7 @@ class BridgeIO extends SignalingAPI {
     this.on(events.signaling.RECEIVE_OFFER, ({ jobId, initiator, destination, forward, offerType, offer }) => {
       if (!initiator || !destination || !offer || !offerType) throw new Error('PLEASE REPORT, Problem with the offline signaling service. provide at least initiator, destination, type a,d the offer as properties in the object received')
       // do we have the initiator in our list of connections?
-      if (!this.parent.livingInview.has(initiator) && offerType === 'new') {
+      if (!this.parent.pendingInview.has(initiator) && offerType === 'new') {
         // we do have the socket for the moment, create it
         this.parent.createNewSocket(this.parent.options.socket, initiator, false)
         // ATTENTION: LISTENERS HAVE TO BE DECLARED ONCE!
@@ -1285,7 +1042,6 @@ class BridgeIO extends SignalingAPI {
           })
         })
         this.parent.pendingInview.get(initiator).socket.on(events.socket.EMIT_OFFER_RENEGOCIATE, (socketOffer) => {
-          console.log('[bridge] receive a negociate offer')
           const off = {
             jobId,
             initiator,
@@ -1462,6 +1218,18 @@ class BridgeIO extends SignalingAPI {
       }).catch(e => {
         sendResponse(false)
       })
+    } else if (!this.parent.livingOutview.has(dest) && this.parent.pendingOutview.has(dest)) {
+      const tout = setTimeout(() => {
+        sendResponse(false, `pending connection has never been connected. (from: ${from}, dest:${dest} forward: ${forward})`)
+      }, this.parent.options.n2n.timeout)
+      this.parent.pendingOutview.get(dest).socket.once('connect', () => {
+        clearTimeout(tout)
+        this.parent.connectFromUs(dest).then(() => {
+          sendResponse(true)
+        }).catch(e => {
+          sendResponse(false, e.message)
+        })
+      })
     } else {
       sendResponse(false)
     }
@@ -1480,7 +1248,7 @@ module.exports = BridgeIO
 /*! no static exports found */
 /***/ (function(module, exports, __webpack_require__) {
 
-const SignalingAPI = __webpack_require__(/*! ../api */ "./lib/api/index.js").signaling
+const SignalingAPI = __webpack_require__(/*! ./signaling */ "./lib/signaling/signaling.js")
 const events = __webpack_require__(/*! ../events */ "./lib/events.js")
 const debug = __webpack_require__(/*! debug */ "./node_modules/debug/src/browser.js")
 const short = __webpack_require__(/*! short-uuid */ "./node_modules/short-uuid/index.js")
@@ -1494,7 +1262,7 @@ class BridgeOI extends SignalingAPI {
     this.on(events.signaling.RECEIVE_OFFER, ({ jobId, initiator, destination, forward, offerType, offer }) => {
       if (!initiator || !destination || !offer || !offerType) throw new Error('PLEASE REPORT, Problem with the offline signaling service. provide at least initiator, destination, type a,d the offer as properties in the object received')
       // do we have the initiator in our list of connections?
-      if (!this.parent.livingInview.has(initiator) && offerType === 'new') {
+      if (!this.parent.pendingInview.has(initiator) && offerType === 'new') {
         // we do have the socket for the moment, create it
         this.parent.createNewSocket(this.parent.options.socket, initiator, false)
         // ATTENTION: LISTENERS HAVE TO BE DECLARED ONCE!
@@ -1509,7 +1277,6 @@ class BridgeOI extends SignalingAPI {
           })
         })
         this.parent.pendingInview.get(initiator).socket.on(events.socket.EMIT_OFFER_RENEGOCIATE, (socketOffer) => {
-          console.log('[bridge] receive a negociate offer')
           const off = {
             jobId,
             initiator,
@@ -1677,6 +1444,18 @@ class BridgeOI extends SignalingAPI {
       }).catch(e => {
         sendResponse(false)
       })
+    } else if (!this.parent.livingOutview.has(dest) && this.parent.pendingOutview.has(dest)) {
+      const tout = setTimeout(() => {
+        sendResponse(false, `pending connection has never been connected. (from: ${from}, dest:${dest} forward: ${forward})`)
+      }, this.parent.options.n2n.timeout)
+      this.parent.pendingOutview.get(dest).socket.once('connect', () => {
+        clearTimeout(tout)
+        this.parent.connectFromUs(dest).then(() => {
+          sendResponse(true)
+        }).catch(e => {
+          sendResponse(false, e.message)
+        })
+      })
     } else {
       sendResponse(false)
     }
@@ -1695,7 +1474,7 @@ module.exports = BridgeOI
 /*! no static exports found */
 /***/ (function(module, exports, __webpack_require__) {
 
-const SignalingAPI = __webpack_require__(/*! ../api */ "./lib/api/index.js").signaling
+const SignalingAPI = __webpack_require__(/*! ./signaling */ "./lib/signaling/signaling.js")
 const events = __webpack_require__(/*! ../events */ "./lib/events.js")
 const debug = __webpack_require__(/*! debug */ "./node_modules/debug/src/browser.js")
 const short = __webpack_require__(/*! short-uuid */ "./node_modules/short-uuid/index.js")
@@ -1724,7 +1503,6 @@ class BridgeOO extends SignalingAPI {
           })
         })
         this.parent.pendingInview.get(initiator).socket.on(events.socket.EMIT_OFFER_RENEGOCIATE, (socketOffer) => {
-          console.log('[bridge] receive a negociate offer')
           const off = {
             jobId,
             initiator,
@@ -1905,8 +1683,17 @@ class BridgeOO extends SignalingAPI {
         sendResponse(false, e.message)
       })
     } else {
-      this._debug('[%s/bridgeOO] (jobId=%s)it means that there is a pending connection to dest: %s ', this.parent.id, jobId, dest)
-      sendResponse(false, `pending conenction. (from: ${from}, dest:${dest} forward: ${forward})`)
+      const tout = setTimeout(() => {
+        sendResponse(false, `pending connection has never been connected. (from: ${from}, dest:${dest} forward: ${forward})`)
+      }, this.parent.options.n2n.timeout)
+      this.parent.pendingOutview.get(dest).socket.once('connect', () => {
+        clearTimeout(tout)
+        this.parent.connectFromUs(dest).then(() => {
+          sendResponse(true)
+        }).catch(e => {
+          sendResponse(false, e.message)
+        })
+      })
     }
   }
 } // not implemented for the moment
@@ -1923,7 +1710,7 @@ module.exports = BridgeOO
 /*! no static exports found */
 /***/ (function(module, exports, __webpack_require__) {
 
-const SignalingAPI = __webpack_require__(/*! ../api */ "./lib/api/index.js").signaling
+const SignalingAPI = __webpack_require__(/*! ./signaling */ "./lib/signaling/signaling.js")
 const events = __webpack_require__(/*! ../events */ "./lib/events.js")
 const debug = __webpack_require__(/*! debug */ "./node_modules/debug/src/browser.js")
 const errors = __webpack_require__(/*! ../errors */ "./lib/errors/index.js")
@@ -1952,10 +1739,8 @@ class DirectSignaling extends SignalingAPI {
             offerType: 'back'
           }
           this.sendOfferBack(off)
-          // console.log('%s emitted accepted offers: ', jobId, off)
         })
         this.parent.pendingInview.get(initiator).socket.on(events.socket.EMIT_OFFER_RENEGOCIATE, (socketOffer) => {
-          console.log('[bridge] receive a negociate offer')
           const off = {
             jobId,
             initiator,
@@ -1966,7 +1751,6 @@ class DirectSignaling extends SignalingAPI {
           this.sendOfferBackRenegociate(off)
         })
         // WE RECEIVE THE OFFER ON THE ACCEPTOR
-        // console.log('[first/new] receive an offer to emit to the socket... ', jobId)
         this.parent.pendingInview.get(initiator).socket.emit(events.socket.RECEIVE_OFFER, offer)
       } else {
         // now if it is a new offer, give it to initiator socket, otherwise to destination socket
@@ -2048,8 +1832,10 @@ class DirectSignaling extends SignalingAPI {
         // first send a message to peerId
         const jobId = translator.new()
         const tout = setTimeout(() => {
-          reject(new Error('connectToUs: timeout | peerId: ' + peerId + ' jobId: ' + jobId))
-        }, timeout + 1000) // always put two second to handle a maximum of 2s of delay minimum...
+          const e = new Error(`timed out (${timeout} (ms)) jobId= ${jobId}. Cannot establish a connection between us and ${peerId}`)
+          console.error(e)
+          reject(e)
+        }, timeout) // always put two second to handle a maximum of 2s of delay minimum...
         this.parent.events.once(jobId, (msg) => {
           if (msg.response) {
             clearTimeout(tout)
@@ -2094,7 +1880,7 @@ class DirectSignaling extends SignalingAPI {
       if (!this.parent.livingOutview.has(peerId) && this.parent.livingInview.has(peerId) && !this.parent.pendingOutview.has(peerId)) {
         // we need to create the connection by exchanging offer between the two peers
         const tout = setTimeout(() => {
-          reject(new Error(`[${this.parent.id}][${jobId}][to=${id}][_connectToUs] timeout`))
+          reject(new Error(`[${this.parent.id}][${jobId}][to=${id}] timeout`))
         }, this.parent.options.n2n.timeout)
 
         const socket = this.parent.createNewSocket(this.parent.options.socket, peerId, true)
@@ -2121,7 +1907,7 @@ class DirectSignaling extends SignalingAPI {
           clearTimeout(tout)
           reject(e)
         })
-      } else if (this.parent.livingOutview.has(peerId) && this.parent.livingOutview.get(peerId).socket.status !== 'disconnected') {
+      } else if (this.parent.livingOutview.has(peerId) && this.parent.livingInview.has(peerId)) {
         this._debug('[%s][%s][_connectToUs] the peer is in our outview so, just increase occurences %s...', this.parent.id, jobId, id)
         this.parent.connectFromUs(peerId).then(() => {
           this._debug('[%s][%s][_connectToUs] Increase occurences has been done ...', this.parent.id, jobId, id)
@@ -2130,14 +1916,30 @@ class DirectSignaling extends SignalingAPI {
           this._debug('[%s][%s][_connectToUs] Increase occurences has crashed ...', this.parent.id, jobId, id)
           reject(e)
         })
+      } else if (!this.parent.livingOutview.has(peerId) && this.parent.livingInview.has(peerId) && this.parent.pendingOutview.has(peerId)) {
+        const tout = setTimeout(() => {
+          reject(new Error('pending connection has never been connected.'))
+        }, this.parent.options.n2n.timeout)
+        this.parent.pendingOutview.get(peerId).socket.once('connect', () => {
+          clearTimeout(tout)
+          this.parent.connectFromUs(peerId).then(() => {
+            this._debug('[%s][%s][_connectToUs/afterpending] Increase occurences has been done ...', this.parent.id, jobId, id)
+            resolve()
+          }).catch(e => {
+            this._debug('[%s][%s][_connectToUs/afterpending] Increase occurences has crashed ...', this.parent.id, jobId, id)
+            reject(e)
+          })
+        })
+      } else if (this.parent.livingOutview.has(peerId) && !this.parent.livingInview.has(peerId)) {
+        reject(new Error('connection not in the inview'))
       } else {
-        reject(new Error('pending connection'))
+        reject(new Error('this is another case....'))
       }
     })
     p().then(() => {
       sendResponse(true)
     }).catch(e => {
-      this._debug('[%s][%s][_connectToUs] is errored %s...', this.id, jobId, id, e)
+      this._debug('[%s][%s][_connectToUs] is errored %s...', this.parent.id, jobId, id, e)
       sendResponse(false, e.message)
     })
   }
@@ -2161,7 +1963,8 @@ module.exports = {
   bridgeIO: __webpack_require__(/*! ./bridgeIO */ "./lib/signaling/bridgeIO.js"),
   bridgeOO: __webpack_require__(/*! ./bridgeOO */ "./lib/signaling/bridgeOO.js"),
   bridgeOI: __webpack_require__(/*! ./bridgeOI */ "./lib/signaling/bridgeOI.js"),
-  direct: __webpack_require__(/*! ./direct */ "./lib/signaling/direct.js")
+  direct: __webpack_require__(/*! ./direct */ "./lib/signaling/direct.js"),
+  abstract: __webpack_require__(/*! ./signaling */ "./lib/signaling/signaling.js")
 }
 
 
@@ -2174,7 +1977,7 @@ module.exports = {
 /*! no static exports found */
 /***/ (function(module, exports, __webpack_require__) {
 
-const SignalingAPI = __webpack_require__(/*! ../api */ "./lib/api/index.js").signaling
+const SignalingAPI = __webpack_require__(/*! ./signaling */ "./lib/signaling/signaling.js")
 const events = __webpack_require__(/*! ../events */ "./lib/events.js")
 
 class OfflineSignaling extends SignalingAPI {
@@ -2250,7 +2053,7 @@ module.exports = OfflineSignaling
 /*! no static exports found */
 /***/ (function(module, exports, __webpack_require__) {
 
-const SignalingAPI = __webpack_require__(/*! ../api */ "./lib/api/index.js").signaling
+const SignalingAPI = __webpack_require__(/*! ./signaling */ "./lib/signaling/signaling.js")
 const events = __webpack_require__(/*! ../events */ "./lib/events.js")
 const io = __webpack_require__(/*! socket.io-client */ "./node_modules/socket.io-client/lib/index.js")
 const short = __webpack_require__(/*! short-uuid */ "./node_modules/short-uuid/index.js")
@@ -2424,6 +2227,64 @@ module.exports = {"port":5555,"host":"http://localhost","max":20};
 
 /***/ }),
 
+/***/ "./lib/signaling/signaling.js":
+/*!************************************!*\
+  !*** ./lib/signaling/signaling.js ***!
+  \************************************/
+/*! no static exports found */
+/***/ (function(module, exports, __webpack_require__) {
+
+const errors = __webpack_require__(/*! ../errors */ "./lib/errors/index.js")
+const EventEmitter = __webpack_require__(/*! events */ "./node_modules/events/events.js")
+const events = __webpack_require__(/*! ../events */ "./lib/events.js")
+
+class Signaling extends EventEmitter {
+  constructor (options = {}) {
+    super()
+    this.options = options
+  }
+
+  /**
+   * @description [**To Impelment**] Connect the signaling service
+   * @param  {Object}  options options for the connection if needed
+   * @return {Promise}            Promise resolved when the connection succeeded
+   */
+  async connect (options) {
+    return Promise.reject(errors.nyi())
+  }
+
+  /**
+   * Get a new peer from the signaling service, can be undefined or a string representing the peer id to connect with
+   * @return {Promise}        Promise resolved with the peerId or undefined as result or reject with an error
+   */
+  async getNewPeer () {
+    return Promise.reject(errors.nyi())
+  }
+
+  /**
+   * Send an offer to the signaling service
+   * @param  {Object}  offer  the offer to send to the signaling server
+   * @return {Promise}        Promise resolved when the offer has been sent
+   */
+  async sendOffer (offer) {
+    return Promise.reject(errors.nyi())
+  }
+
+  /**
+   * Method called when an offer has been received always with the format {initiator, destination, offer}
+   * @param  {Object}  offer the offer received
+   * @return {void}
+   */
+  receiveOffer (offer) {
+    this.emit(events.signaling.RECEIVE_OFFER, offer)
+  }
+}
+
+module.exports = Signaling
+
+
+/***/ }),
+
 /***/ "./lib/sockets/index.js":
 /*!******************************!*\
   !*** ./lib/sockets/index.js ***!
@@ -2432,6 +2293,7 @@ module.exports = {"port":5555,"host":"http://localhost","max":20};
 /***/ (function(module, exports, __webpack_require__) {
 
 module.exports = {
+  abstract: __webpack_require__(/*! ./socket */ "./lib/sockets/socket.js"),
   simplepeer: __webpack_require__(/*! ./simple-peer */ "./lib/sockets/simple-peer.js"),
   moc: __webpack_require__(/*! ./webrtc-moc */ "./lib/sockets/webrtc-moc.js")
 }
@@ -2446,7 +2308,7 @@ module.exports = {
 /*! no static exports found */
 /***/ (function(module, exports, __webpack_require__) {
 
-const Socket = __webpack_require__(/*! ../api */ "./lib/api/index.js").socket
+const Socket = __webpack_require__(/*! ./socket */ "./lib/sockets/socket.js")
 const lmerge = __webpack_require__(/*! lodash.merge */ "./node_modules/lodash.merge/index.js")
 const SimplePeer = __webpack_require__(/*! simple-peer */ "./node_modules/simple-peer/index.js")
 
@@ -2491,11 +2353,13 @@ class SimplePeerWrapper extends Socket {
         this.emitOffer(offer)
       })
       this.__socket.on('close', () => {
-        this.signalDisconnect()
+        if (this.status !== 'disconnected') {
+          this.signalDisconnect()
+        }
       })
       this.__socket.on('error', (error) => {
-        this.signalDisconnect()
-        this.__socket.destroy()
+        // this.signalDisconnect()
+        this.__socket.destroy(error)
         this._manageErrors(error)
       })
       this.__socket.on('data', (...args) => {
@@ -2521,15 +2385,17 @@ class SimplePeerWrapper extends Socket {
         resolve()
       })
       this.__socket.once('error', (error) => {
-        this.signalDisconnect()
-        this.__socket.destroy()
+        // this.signalDisconnect()
+        this.__socket.destroy(error)
         this._manageErrors(error)
       })
       this.__socket.on('data', (...args) => {
         this._receiveData(...args)
       })
       this.__socket.once('close', () => {
-        this.signalDisconnect()
+        if (this.status !== 'disconnected') {
+          this.signalDisconnect()
+        }
       })
     })
   }
@@ -2539,22 +2405,226 @@ class SimplePeerWrapper extends Socket {
     try {
       this.__socket.send(data)
     } catch (e) {
-      console.log(this, this.status, e.message)
       throw e
     }
   }
 
   async _disconnect () {
-    try {
+    return new Promise((resolve, reject) => {
+      this.__socket.once('close', () => {
+        resolve()
+      })
       this.__socket.destroy()
-      return Promise.resolve()
-    } catch (e) {
-      return Promise.reject(e)
-    }
+    })
   }
 }
 
 module.exports = SimplePeerWrapper
+
+
+/***/ }),
+
+/***/ "./lib/sockets/socket.js":
+/*!*******************************!*\
+  !*** ./lib/sockets/socket.js ***!
+  \*******************************/
+/*! no static exports found */
+/***/ (function(module, exports, __webpack_require__) {
+
+const errors = __webpack_require__(/*! ../errors */ "./lib/errors/index.js")
+const events = __webpack_require__(/*! ../events */ "./lib/events.js")
+const EventEmitter = __webpack_require__(/*! events */ "./node_modules/events/events.js")
+const sizeof = __webpack_require__(/*! object-sizeof */ "./node_modules/object-sizeof/index.js")
+const lmerge = __webpack_require__(/*! lodash.merge */ "./node_modules/lodash.merge/index.js")
+const short = __webpack_require__(/*! short-uuid */ "./node_modules/short-uuid/index.js")
+const translator = short()
+
+/**
+ * @class
+ * @classdesc This Abstract class represent a socket which can be implemented with any socket compatible with this API.
+ * For example you can implement this class with a webrtc socket such as simple-peer
+ * @type {class}
+ */
+class Socket extends EventEmitter {
+  /**
+   * @description Constructor of the Socket class, the connect method just initialize a socket and wait for an accepted offer
+   * @param {Object} options   any options needed
+   */
+  constructor (options = {}) {
+    super()
+    this.socketId = translator.new()
+    this._debug = (__webpack_require__(/*! debug */ "./node_modules/debug/src/browser.js"))('n2n:socket')
+    this._debugMessage = (__webpack_require__(/*! debug */ "./node_modules/debug/src/browser.js"))('n2n:message')
+    this.options = lmerge({ chunks: 16000 }, options)
+    this.status = 'disconnected' // connected or disconnected
+    this.on(events.socket.RECEIVE_OFFER, this._receiveOffer)
+    this.buffer = []
+    this.statistics = {
+      offerSent: 0,
+      offerReceived: 0
+    }
+    this._errored = false
+    this._errors = []
+  }
+
+  /**
+   * Review the buffer of data sent
+   * @return {void}
+   */
+  reviewBuffer () {
+    let data
+    while ((data = this.buffer.shift())) {
+      this.send(data)
+    }
+  }
+
+  /**
+   * Signal to the supervisor of the socket that this socket is conencted and review the internal buffer
+   * @return {void}
+   */
+  signalConnect () {
+    this.status = 'connected'
+    this.emit('connect')
+    this.reviewBuffer()
+  }
+
+  /**
+   * Signal to the supervisor of the socket that this socket is disconnected
+   * @return {void}
+   */
+  signalDisconnect () {
+    this.status = 'disconnected'
+    this.emit('close', this.socketId)
+  }
+
+  /**
+   * @description To Implement: you will receive all offers here, do what you want with them, Usefull for connection if you are using simple-peer or webrtc
+   * @param  {Object} offer offer received from someone who want to connect to us
+   * @return {void}
+   */
+  _receiveOffer (offer) {
+    throw errors.nyi()
+  }
+
+  /**
+   * Send an offer to the supervisor of the socket for sending the offer (perhaps used by a signaling service)
+   * @param  {Object} offer [description]
+   * @return {void}       [description]
+   */
+  emitOffer (offer) {
+    this.statistics.offerSent++
+    this._debug('[socket:%s] Send an accepted offer (status=%s): ', this.socketId, this.status, offer, this.statistics)
+    if (this.status === 'connected') {
+      this._debug('The socket is connected but you continue to emit offers...', offer, this.status, this.__socket._channel.readyState)
+      this.emit(events.socket.EMIT_OFFER_RENEGOCIATE, offer)
+    } else {
+      this.emit(events.socket.EMIT_OFFER, offer)
+    }
+  }
+
+  /**
+   * @description [**To implement**]
+   * Connect the socket to a peer you have to provide.
+   * You have to implement this method and return a promise that resolve when the connection is completed.
+   * @param  {Object} options options passed to the function
+   * @return {Promise}         Promise resolved when the socket is connected
+   */
+  _connect (options) {
+    return Promise.reject(errors.nyi())
+  }
+
+  /**
+   * @description [**To implement**]
+   * Send a message on the socket to the peer which is connected to this socket.
+   * You have to implement this method and return a promise that resolve when the message is sent
+   * @param  {Object} data    data to send
+   * @param  {Object} options options
+   * @return {Promise}         Promise resolved when the message is sent
+   */
+  _send (data, options) {
+    return Promise.reject(errors.nyi())
+  }
+
+  /**
+   * Callback called when data are received
+   * Default bbehavior: emit data on the event bus when received with the event 'data'
+   * @param  {Object} data data received
+   * @return {void}
+   */
+  _receiveData (data) {
+    if (this.status === 'connecting') {
+      this.signalConnect()
+    }
+    this._debug('[socket:%s] receiving data, size=%f', this.socketId, sizeof(data))
+    this.emit('data', data)
+  }
+
+  _manageErrors (...args) {
+    this._errored = true
+    this._errors.push(...args)
+    this._debug('Error on the socket: ', ...args)
+    this.emit('error', ...args)
+  }
+
+  /**
+   * @description [**To implement**]
+   * Destroy/disconnect the socket
+   * You have to implement this method and return a promise that resolve when the socket is destroyed
+   * @return {Promise} Promise resolved when the socket is destroyed/disconnected
+   */
+  _disconnect () {
+    return Promise.reject(errors.nyi())
+  }
+
+  /**
+  * @description Connect the socket to a peer using the signaling service provided by the supervisor of the socket.
+  * @param  {Object} options options passed to the function
+  * @return {Promise}         Promise resolved when the socket is connected
+   */
+  async connect (options = this.options) {
+    this.status = 'connecting'
+    return this._connect(options).then((res) => {
+      this.signalConnect()
+      return res
+    }).catch(e => e)
+  }
+
+  /**
+   * @description Send a message on the socket to the peer which is connected to this socket.
+   * @param  {Object} data    data to send
+   * @param  {Object} options options
+   * @return {Promise}         Promise resolved when the message is sent
+   */
+  async send (data, options) {
+    const size = sizeof(data)
+    this._debug('[socket:%s] Data size sent (max allowed=%f Bytes): %f', this.socketId, this.options.chunks, size)
+    if (size > this.options.chunks) {
+      return Promise.reject(new Error('Your data is too big. Max allowed: ' + this.options.chunks))
+    } else {
+      if (this.status === 'connected') {
+        return this._send(data, options)
+      } else if (this.status === 'connecting') {
+        this.buffer.push(data)
+      } else if (['disconnecting', 'disconnected'].includes(this.status)) {
+        throw new Error('socket disconnected or disconnecting: status=' + this.status)
+      }
+    }
+  }
+
+  /**
+   * @description Destroy/disconnect the socket
+   * @return {Promise} Promise resolved when the socket is destroyed/disconnected
+   */
+  async disconnect (options) {
+    this.status = 'disconnected'
+    return this._disconnect(options).then((res) => {
+      this.signalDisconnect()
+      return res
+    }).catch(e => e)
+  }
+}
+
+module.exports = Socket
 
 
 /***/ }),
@@ -2769,6 +2839,12 @@ module.exports = class SimplePeerAbstract extends EventEmitter {
 /***/ (function(module, exports) {
 
 class View extends Map {
+  /**
+   * Check if the Socket is available or not, by checking the number of occurences and the number of lock
+   * Rule: occ - lock > 0 AND socket is connected
+   * @param  {id} id identifier of the peer
+   * @return {Boolean}    true or false if the peer is available or not
+   */
   available (id) {
     if (super.has(id)) {
       const node = super.get(id)
