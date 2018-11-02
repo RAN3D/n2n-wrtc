@@ -4,7 +4,7 @@ let g = new sigma({ // eslint-disable-line
     container: 'network',
     type: 'canvas'
   },
-  settings: Object.assign(sigma.settings, {
+  settings: Object.assign(sigma.settings, { // eslint-disable-line
     defaultEdgeType: 'curvedArrow',
     minArrowSize: 10,
     scalingMode: 'inside',
@@ -12,7 +12,7 @@ let g = new sigma({ // eslint-disable-line
   }) // eslint-disable-line
 }) // eslint-disable-line
 const moc = false
-localStorage.debug = 'n2n:direct'
+localStorage.debug = 'n2n:direct' // eslint-disable-line
 
 const a = createNode('a', 0, 0)
 const b = createNode('b', 1, 0)
@@ -56,8 +56,11 @@ function createNode (name, x, y) {
       g.refresh()
     }
   })
-  node.on('close', (id, outview) => {
-    console.log('%s closes a con: ', node.id, id, outview)
+  node.on('close_in', (id, fail) => {
+    console.log('%s closes an inview connection with %s, fail: %s', node.id, id, fail)
+  })
+  node.on('close_out', (id, fail) => {
+    console.log('%s closes an outview connection with %s, fail: %s', node.id, id, fail)
   })
   node.on('receive', (id, message) => {
     console.log('%s receive a message  from %s:', node.id, id, message)
