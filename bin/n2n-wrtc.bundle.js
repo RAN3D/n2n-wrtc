@@ -176,6 +176,9 @@ module.exports = {
     OCC_DEC: 'o:d' // when we have to decrease the occurence on the inview
   },
   n2n: {
+    DISCONNECT: 'disc',
+    INC_IN: 'inc:in',
+    DEC_IN: 'dec:in',
     CONNECT_TO_US: 'c:2:u',
     DIRECT_TO: 'd:2',
     DIRECT_BACK: 'd:b',
@@ -216,7 +219,8 @@ module.exports = {
 module.exports = {
   N2N: __webpack_require__(/*! ./main */ "./lib/main.js"),
   sockets: __webpack_require__(/*! ./sockets */ "./lib/sockets/index.js"),
-  signaling: __webpack_require__(/*! ./signaling */ "./lib/signaling/index.js")
+  signaling: __webpack_require__(/*! ./signaling */ "./lib/signaling/index.js"),
+  errors: __webpack_require__(/*! ./errors */ "./lib/errors/index.js")
 }
 
 
@@ -301,6 +305,22 @@ class N2N extends EventEmitter {
    * @param  {N2N}  neighbor                          N2N instance we want to connect to directly
    * @param  {Signaling}  [signaling=this.signaling.online] The online service we want to use. Dont forget to active the listener to receive incoming messages
    * @return {Promise} This method is resolved when the connection is successfully done, otherwise rejected
+   * @example
+   * // Offline connection
+   * const N2N = require('n2n-wrtc').n2n
+   * const a = new N2N({n2n: {id: 'a'}})
+   * const b = new N2N({n2n: {id: 'b'}})
+   * // offline
+   * await a.connect(b)
+   * console.log('a is connected to b')
+   * @example
+   * // Online connection using a signaling server, 'node ./bin/signaling-server.js', server running on the port http://localhost:555/
+   * const N2N = require('n2n-wrtc').n2n
+   * const a = new N2N({n2n: {id: 'a'}})
+   * const b = new N2N({n2n: {id: 'b'}})
+   * await a.connect()
+   * await b.connect()
+   * console.log('b is connected to a')
    */
   async connect (neighbor, signaling = this.signaling.online) {
     if (neighbor) {
@@ -398,6 +418,23 @@ class N2N extends EventEmitter {
    * @param  {String|null}  [from=null] peer id
    * @param  {String|null}  [to=null]   peer id
    * @return {Promise} resolved if the promise of chosen case is resolved, otherwise reject with the appropriate method
+   * @example
+   * const N2N = require('n2n-wrtc').n2n
+   * @example
+   * // Offline connection
+   * const N2N = require('n2n-wrtc').n2n
+   * const a = new N2N({n2n: {id: 'a'}})
+   * const b = new N2N({n2n: {id: 'b'}})
+   * const c = new N2N({n2n: {id: 'c'}})
+   * await a.connect(b)
+   * await a.connect(c)
+   * // bridge between b and c because a has b and c in its outview, similar to a.bridgeOO(b.id, c.id)
+   * await a.connect4u(b.id, c.id) // create the connection from b to c by exchanging offers through a
+   * await a.connect4u(c.id, b.id) // create the connection from c to b by exchanging offers through a
+   * // add an arc from us to b, similar to a.connectFromUs(b.id)
+   * await a.connect4u(null, b.id)
+   * // add a connection from b to us
+   * await a.connect4u(b.id, null)
    */
   async connect4u (from = null, to = null) {
     if (from === this.id) from = null
@@ -426,6 +463,13 @@ class N2N extends EventEmitter {
    * Add outview connection to the peer specified by peerId (use an existing connection for that.)
    * @param  {String}  peerId peer id to connect with
    * @return {Promise} Resolve when successfully established. Rject otherwise
+   * @example
+   * // Offline connection
+   * const N2N = require('n2n-wrtc').n2n
+   * const a = new N2N({n2n: {id: 'a'}})
+   * const b = new N2N({n2n: {id: 'b'}})
+   * await a.connect(b)
+   * await a.connect4u(null, b.id)
    */
   async connectFromUs (peerId, outview = true) {
     return this.increaseOccurences(peerId, true)
@@ -438,6 +482,13 @@ class N2N extends EventEmitter {
    * Good to luck to find a way to solve your problem. (set a bigger timeout (-_-))
    * @param  {String}  peerId id of the peer that will establish the connection
    * @return {Promise} Resolve when the connection is successfully established. Reject otherwise, error or timeout, or peer not found.
+   * @example
+   * // Offline connection
+   * const N2N = require('n2n-wrtc').n2n
+   * const a = new N2N({n2n: {id: 'a'}})
+   * const b = new N2N({n2n: {id: 'b'}})
+   * await a.connect(b)
+   * await a.connect4u(b.id, null)
    */
   async connectToUs (peerId, timeout = this.options.n2n.timeout) {
     return this.signaling.direct.connectToUs(peerId, timeout)
@@ -450,6 +501,16 @@ class N2N extends EventEmitter {
    * @param  {String}  dest   peer id (destination)
    * @param  {Number} [timeout=this.options.n2n.timeout] time to wait before rejecting.
    * @return {Promise}
+   * @example
+   * // Offline connection
+   * const N2N = require('n2n-wrtc').n2n
+   * const a = new N2N({n2n: {id: 'a'}})
+   * const b = new N2N({n2n: {id: 'b'}})
+   * const c = new N2N({n2n: {id: 'c'}})
+   * await a.connect(b)
+   * await a.connect(c)
+   * // bridge between b and c, with b in the inview and c in the outview
+   * await a.connect4u(b.id, c.id) // create the connection from b to c by exchanging offers through a
    */
   async bridgeIO (from, dest, timeout = this.options.n2n.timeout) {
     return this.signaling.bridgeIO.bridge(from, dest, timeout)
@@ -461,6 +522,16 @@ class N2N extends EventEmitter {
    * @param  {String}  dest   peer id (destination)
    * @param  {Number} [timeout=this.options.n2n.timeout] time to wait before rejecting.
    * @return {Promise}
+   * @example
+   * // Offline connection
+   * const N2N = require('n2n-wrtc').n2n
+   * const a = new N2N({n2n: {id: 'a'}})
+   * const b = new N2N({n2n: {id: 'b'}})
+   * const c = new N2N({n2n: {id: 'c'}})
+   * await a.connect(b)
+   * await a.connect(c)
+   * // bridge between b and c, with b in the outview and c in the inview
+   * await a.connect4u(b.id, c.id) // create the connection from b to c by exchanging offers through a
    */
   async bridgeOI (from, dest, timeout = this.options.n2n.timeout) {
     return this.signaling.bridgeOI.bridge(from, dest, timeout)
@@ -472,6 +543,16 @@ class N2N extends EventEmitter {
    * @param  {String}  dest   peer id (destination)
    * @param  {Number} [timeout=this.options.n2n.timeout] time to wait before rejecting.
    * @return {Promise}
+   * @example
+   * // Offline connection
+   * const N2N = require('n2n-wrtc').n2n
+   * const a = new N2N({n2n: {id: 'a'}})
+   * const b = new N2N({n2n: {id: 'b'}})
+   * const c = new N2N({n2n: {id: 'c'}})
+   * await a.connect(b)
+   * await a.connect(c)
+   * // bridge between b and c, with both b and c in the outview
+   * await a.connect4u(b.id, c.id) // create the connection from b to c by exchanging offers through a
    */
   async bridgeOO (from, dest, timeout = this.options.n2n.timeout) {
     return this.signaling.bridgeOO.bridge(from, dest, timeout)
@@ -486,6 +567,16 @@ class N2N extends EventEmitter {
    * @param  {Object}  message Message to send
    * @param {Boolean}  [outview=true] Define where to get the socket for sending the message, on the outview or inview
    * @return {Promise} Promise resolved when the message is sent, reject if the peer is not found or an error is return from the send method of the socket used.
+   * @example
+   * // Offline connection
+   * const N2N = require('n2n-wrtc').n2n
+   * const a = new N2N({n2n: {id: 'a'}})
+   * const b = new N2N({n2n: {id: 'b'}})
+   * await a.connect(b)
+   * b.on('data', (id, message) => {
+   *  console.log('b receive the message from %s:', id, message)
+   * })
+   * a.send('data', b.id, 'Hello world') // send the message Hello world on the event 'data', the message will only be delivered on the peer b on the event 'data' (you can change the value of the event). the message will is only sent on the outview. If you want to change, add an additional argument as "a.send('data', b.id, 'Hello world', false)" for sending the message on the inview.
    */
   async send (protocol = 'receive', id, msg, outview = true) {
     const message = { protocol, msg }
@@ -495,6 +586,13 @@ class N2N extends EventEmitter {
       return this._sendInview(id, message)
     }
   }
+  /**
+   * Send a message on the outview
+   * @param  {String}  peerId  identifier of the peer
+   * @param  {*}  message message to send.
+   * @return {Promise}
+   * @private
+   */
   async _sendInview (peerId, message) {
     if (this.livingInview.has(peerId)) {
       this._debugMessage('[%s/n2n] sending a message on the inview to:  %s', this.id, peerId, message)
@@ -503,6 +601,13 @@ class N2N extends EventEmitter {
       throw new Error('[' + this.id + '] Peer not found in the inview: ' + peerId)
     }
   }
+  /**
+   * Send a message on the inview
+   * @param  {String}  peerId  identifier of the peer
+   * @param  {*}  message message to send.
+   * @return {Promise}
+   * @private
+   */
   async _sendOutview (peerId, message) {
     if (this.livingOutview.has(peerId)) {
       this._debugMessage('[%s/n2n] sending a message on the outview to:  %s', this.id, peerId, message)
@@ -514,8 +619,27 @@ class N2N extends EventEmitter {
 
   /**
    * @description Disconnect all or one arc.
-   * @param  {String}  userId [description]
-   * @return {Promise}        [description]
+   * @param  {String}  userId identifier of the peer to disconnect.
+   * @return {Promise}
+   * @example
+   * // Offline connection
+   * const N2N = require('n2n-wrtc').n2n
+   * const a = new N2N({n2n: {id: 'a'}})
+   * const b = new N2N({n2n: {id: 'b'}})
+   * a.on('close_out', (id, fail) => {
+   *  console.log('We are disconnected from %s, fail? %s', id, fail)
+   * })
+   * b.on('close_in', (id, fail) => {
+   *  console.log('%s is disconnected from us', fail? %s', fail)
+   * })
+   * await a.connect(b)
+   * await a.connect(b)
+   * // 2 arcs from a to b, a -> b, a -> b
+   * // disconnect only one arc from a to b
+   * // become: a -> b
+   * a.disconnect(b.id)
+   * // or for disconnecting all arcs
+   * a.disconnect()
    */
   async disconnect (userId) {
     if (userId) {
@@ -561,6 +685,14 @@ class N2N extends EventEmitter {
    * Lock an outview connection by incrementing the lock value of a socket
    * @param  {String}  peerId peer id to lock
    * @return {Boolean} False if not locked, true when locked.
+   * @example
+   * // Offline connection
+   * const N2N = require('n2n-wrtc').n2n
+   * const a = new N2N({n2n: {id: 'a'}})
+   * const b = new N2N({n2n: {id: 'b'}})
+   * await a.connect(b)
+   * a.lock(b.id)
+   * await a.disconnect(b.id) // throw an error, because the connection is closed.
    */
   lock (peerId) {
     if (!this.livingOutview.has(peerId)) {
@@ -579,6 +711,15 @@ class N2N extends EventEmitter {
    * Unlock an outview connection by decrementing the lock value of a socket
    * @param  {String}  peerId peer id to unlock
    * @return {Boolean} False if not unlocked, true when unlocked.
+   * @example
+   * // Offline connection
+   * const N2N = require('n2n-wrtc').n2n
+   * const a = new N2N({n2n: {id: 'a'}})
+   * const b = new N2N({n2n: {id: 'b'}})
+   * await a.connect(b)
+   * a.lock(b.id)
+   * a.unlock(b.id)
+   * await a.disconnect(b.id) // allowed.
    */
   unlock (peerId) {
     if (!this.livingOutview.has(peerId)) {
@@ -600,6 +741,7 @@ class N2N extends EventEmitter {
    * @description Increase the occurence of the socket in the outview and send a message to the peer connected with to increase its inview
    * @param  {String} peerId [description]
    * @return {Promise}        [description]
+   * @private
    */
   increaseOccurences (peerId) {
     return new Promise((resolve, reject) => {
@@ -607,8 +749,16 @@ class N2N extends EventEmitter {
         reject(errors.peerNotFound(peerId))
       } else {
         this.livingOutview.get(peerId).occurences++
-        this._signalConnect(peerId, true)
-        resolve()
+        this.send(this.options.n2n.protocol, peerId, {
+          type: events.n2n.INC_IN
+        }).then(() => {
+          this._signalConnect(peerId, true)
+          resolve()
+        }).catch(e => {
+          console.warn('[%s] cannot send INC_IN message to %s', this.id, peerId)
+          this._signalConnect(peerId, true)
+          resolve()
+        })
       }
     })
   }
@@ -617,6 +767,7 @@ class N2N extends EventEmitter {
    * Also send a message to the remote peer to decrease its according inview for the socket connected with.
    * @param  {String}  peerId peer id of the connection we want to decrease the occurence
    * @return {Promise} Promise resolved when the dec is done or the real disconnection of the physical link
+   * @private
    */
   async decreaseOccOutview (peerId) {
     if (!this.livingOutview.has(peerId)) {
@@ -627,12 +778,38 @@ class N2N extends EventEmitter {
         throw new Error('lock cannot be higher than the number of occurences when a deletion is performed.')
       } else if (p.occurences > 0 && p.occurences > p.lock) {
         this.livingOutview.get(peerId).occurences--
-        if (this.livingOutview.get(peerId).occurences === 0) {
-          this._signalDisconnect(peerId, true)
-          return p.socket.disconnect()
-        } else {
-          this._signalDisconnect(peerId, true) // signal disconnect
-        }
+        return this.send(this.options.n2n.protocol, peerId, {
+          type: events.n2n.DEC_IN
+        }).then(() => {
+          if (this.livingOutview.get(peerId).occurences === 0) {
+            this._signalDisconnect(peerId, true, false)
+            return this.send(this.options.n2n.protocol, peerId, {
+              type: events.n2n.DISCONNECT
+            }).then(() => {
+              return p.socket.disconnect(this.options.socket)
+            }).catch(e => {
+              return p.socket.disconnect()
+            })
+          } else {
+            this._signalDisconnect(peerId, true, false) // signal disconnect
+            return Promise.resolve()
+          }
+        }).catch(e => {
+          console.warn('[%s] cannot send the message to %s', this.id, peerId)
+          if (this.livingOutview.get(peerId).occurences === 0) {
+            this._signalDisconnect(peerId, true, false)
+            return this.send(this.options.n2n.protocol, peerId, {
+              type: events.n2n.DISCONNECT
+            }).then(() => {
+              return p.socket.disconnect()
+            }).catch(e => {
+              return p.socket.disconnect()
+            })
+          } else {
+            this._signalDisconnect(peerId, true, false) // signal disconnect
+            return Promise.resolve()
+          }
+        })
       } else {
         throw new Error('PLEASE REPORT: decreaseOccOutview')
       }
@@ -640,8 +817,60 @@ class N2N extends EventEmitter {
   }
 
   /**
+   * Decrease the occurences of our inview id
+   * @param  {String} id identifier of the peer we want to decrease the occurence
+   * @return {void}
+   * @private
+   */
+  _decreaseInview (id) {
+    if (this.livingInview.has(id)) {
+      this.livingInview.get(id).occurences--
+      this._signalDisconnect(id, false, false)
+    }
+  }
+  /**
+   * Increase the occurences of our inview id
+   * @param  {String} id identifier of the peer we want to decrease the occurence
+   * @return {void}
+   * @private
+   */
+  _increaseInview (id) {
+    if (this.livingInview.has(id)) {
+      this.livingInview.get(id).occurences++
+    }
+  }
+
+  /**
+   * Disconnect the living inview socket corresponding to the id provided.
+   * @param  {String} id identifier of the peer
+   * @return {void}
+   * @private
+   */
+  _disconnectInview (id) {
+    if (this.livingInview.has(id)) {
+      this.livingInview.get(id).socket.disconnect()
+    }
+  }
+
+  /**
    * Simulate a crash by disconnecting all sockets from inview/outview
    * @return {void}
+   * * @example
+   * // Offline connection
+   * const N2N = require('n2n-wrtc').n2n
+   * const a = new N2N({n2n: {id: 'a'}})
+   * const b = new N2N({n2n: {id: 'b'}})
+   * a.on('close_out', (id, fail) => {
+   *  console.log('We are disconnected from %s, fail? %s', id, fail)
+   * })
+   * b.on('close_in', (id, fail) => {
+   *  console.log('%s is disconnected from us', fail? %s', fail)
+   * })
+   * await a.connect(b)
+   * await a.connect(b)
+   * a.crash()
+   * // b will receive a close_in event with fail equals to true
+   * // a will receive a close_out event with fail equals to true
    */
   crash () {
     this.livingOutview.forEach(p => {
@@ -654,21 +883,16 @@ class N2N extends EventEmitter {
 
   /**
    * @description Create a new Socket and initialize callbacks (message/error/close)
+   * You have to pass the id of the peer that will be connected to this socket.
    * @param  {Object}  options         options to pass to the newly created socket.
    * @param  {String}  id              id of our new neighbor
    * @param  {Boolean} [outview=false] if it is an inview or outview sockt
    * @return {Socket}
+   * @private
    */
   createNewSocket (options, id, outview = false, timeout = this.options.n2n.timeout) {
     const newSocket = new this.options.n2n.SocketClass(options)
     const sid = newSocket.socketId
-    // const s = {
-    //   from: this.id,
-    //   to: id,
-    //   socket: newSocket
-    // }
-    // this._pending.set(sid, s)
-    // this._all.set(sid, s)
     this._debug('[%s] new socket created: %s with timeout', this.id, newSocket.socketId, timeout)
     const tout = setTimeout(() => {
       // deletion, the sid need to be the same as declared... otherwise report this error.
@@ -744,6 +968,7 @@ class N2N extends EventEmitter {
    * @param  {Boolean} [outview=false] (In/out)view
    * @param  {function}  reject         reject callback (used in the connection function)
    * @return {void}
+   * @private
    */
   _manageError (error, peerId, outview = false, reject) {
     // chrome fix for disconnection
@@ -764,6 +989,7 @@ class N2N extends EventEmitter {
    * @param  {Boolean} [outview=false] is in the outview or not
    * @param  {String} socketId Identifier of the socket
    * @return {void}
+   * @private
    */
   _manageClose (peerId, outview = false, socketId) {
     if (outview && this.livingOutview.has(peerId)) {
@@ -772,22 +998,31 @@ class N2N extends EventEmitter {
       if (p.socket.socketId === socketId) {
         this._debug('[%s] close outview: ', this.id, peerId, outview, p)
         for (let i = 0; i < (p.occurences); ++i) {
-          this._signalDisconnect(peerId, outview)
+          this._signalDisconnect(peerId, outview, true)
         }
         this._deleteLiving(peerId, outview)
       } // else, nothing to do
     } else if (!outview && this.livingInview.has(peerId)) {
       const p = this.livingInview.get(peerId)
       if (p.socket.socketId === socketId) {
-        this._signalDisconnect(peerId, outview)
+        for (let i = 0; i < (p.occurences); ++i) {
+          this._signalDisconnect(peerId, outview, true)
+        }
         this._debug('[%s] close inview: ', this.id, peerId, outview)
         this._deleteLiving(peerId, outview)
       }
     } else {
-      console.log('[socket does not exist] Connection closed', peerId)
+      console.warn('[socket does not exist] Connection closed', peerId)
     }
   }
 
+  /**
+   * Delete a living entry, either in the outview or in the inview
+   * @param  {String} id      id the entry to delete
+   * @param  {Boolean} outview If outview delete on the outview otherwise in the inview.
+   * @return {void}
+   * @private
+   */
   _deleteLiving (id, outview) {
     if (outview) {
       this._debug('[%s] deleting outview living entry:', this.id, id)
@@ -798,6 +1033,13 @@ class N2N extends EventEmitter {
     }
   }
 
+  /**
+   * Delete a pending entry, either in the outview or in the inview
+   * @param  {String} id      id the entry to delete
+   * @param  {Boolean} outview If outview delete on the outview otherwise in the inview.
+   * @return {void}
+   * @private
+   */
   _deletePending (id, outview) {
     if (outview) {
       this._debug('[%s] deleting outview pending entry:', this.id, id)
@@ -812,6 +1054,7 @@ class N2N extends EventEmitter {
    * @description Serialize the data before sending it
    * @param  {Object} data data not serialized
    * @return {Object} Serialized data
+   * @private
    */
   _serialize (data) {
     return JSON.stringify(data)
@@ -820,6 +1063,7 @@ class N2N extends EventEmitter {
    * @description Deserialize data when received
    * @param  {string} data data received
    * @return {Object} Data parsed
+   * @private
    */
   _deserialize (data) {
     return JSON.parse(data)
@@ -830,6 +1074,7 @@ class N2N extends EventEmitter {
    * @param  {string} id Id of the peer of the arc
    * @param  {Boolean} outview Is an inview or an outview arc
    * @return {void}
+   * @private
    */
   _signalConnect (id, outview = false) {
     if (outview) {
@@ -842,13 +1087,15 @@ class N2N extends EventEmitter {
    * @description Signal when an arc is closed
    * @param  {string} id Id of the peer of the arc
    * @param  {Boolean} outview Is an inview or an outview arc
+   * @param  {Boolean} if the arc is a failed arc or an arc that has been well disconnected
    * @return {void}
+   * @private
    */
-  _signalDisconnect (id, outview) {
+  _signalDisconnect (id, outview, fail = false) {
     if (outview) {
-      this.emit('close_out', id, outview)
+      this.emit('close_out', id, fail)
     } else {
-      this.emit('close_in', id, outview)
+      this.emit('close_in', id, fail)
     }
   }
 
@@ -857,6 +1104,7 @@ class N2N extends EventEmitter {
    * @param  {String} id   id of the peer
    * @param  {Object} data data received
    * @return {void}
+   * @private
    */
   __receive (id, data) {
     try {
@@ -872,6 +1120,15 @@ class N2N extends EventEmitter {
    * If the connection is totally locked you cant see it.
    * @param {Boolean} [all=false] if true, return all neighbours even if they are locked
    * @return {Array<Object>} Array of object [{peer: {socket, occurences, lock}, id}]
+   * @example
+   * // Offline connection
+   * const N2N = require('n2n-wrtc').n2n
+   * const a = new N2N({n2n: {id: 'a'}})
+   * const b = new N2N({n2n: {id: 'b'}})
+   * const c = new N2N({n2n: {id: 'c'}})
+   * a.connect(b)
+   * b.connect(c)
+   * b.getNeighbours() => [{peer: {socket: ..., occurences: 1, lock: 0}}, id: 'c']
    */
   getNeighbours (all = false) {
     if (all) {
@@ -902,6 +1159,15 @@ class N2N extends EventEmitter {
    * @description Return all ids of reachable peers (outview)
    * @param {Boolean} [all=false] if true, return all neighbours even if they are locked
    * @return {Array<String>}
+   * @example
+   * // Offline connection
+   * const N2N = require('n2n-wrtc').n2n
+   * const a = new N2N({n2n: {id: 'a'}})
+   * const b = new N2N({n2n: {id: 'b'}})
+   * const c = new N2N({n2n: {id: 'c'}})
+   * a.connect(b)
+   * b.connect(c)
+   * b.getNeighbours() => ['c']
    */
   getNeighboursIds (all = false) {
     return this.getNeighbours(all).map(p => p.id)
@@ -960,43 +1226,74 @@ class N2N extends EventEmitter {
     return res
   }
 
+  /**
+   * Callback called upon message received.
+   * @param  {String} id      Identifier of the peer.
+   * @param  {*} message Message received.
+   * @return {void}
+   * @private
+   */
   _receive (id, message) {
-    try {
-      if (message && 'type' in message && 'id' in message && message.type === events.n2n.CONNECT_TO_US) {
+    switch (message.type) {
+      case events.n2n.DISCONNECT:
+        this._disconnectInview(id)
+        break
+      case events.n2n.DEC_IN:
+        this._decreaseInview(id)
+        break
+      case events.n2n.INC_IN:
+        this._increaseInview(id)
+        break
+      case events.n2n.CONNECT_TO_US:
         this.signaling.direct._connectToUs(message)
-      } else if (message && 'type' in message && 'response' in message && message.type === events.n2n.RESPONSE) {
+        break
+      case events.n2n.RESPONSE:
         this.events.emit(message.jobId, message)
-      } else if (message && 'type' in message && message.type === events.n2n.DIRECT_TO) {
+        break
+      case events.n2n.DIRECT_TO:
         this.signaling.direct.receiveOffer(message)
-      } else if (message && 'type' in message && message.type === events.n2n.DIRECT_BACK) {
+        break
+      case events.n2n.DIRECT_BACK:
         this.signaling.direct.receiveOffer(message)
-      } else if (message && 'type' in message && message.type === events.n2n.bridgeIO.BRIDGE) {
+        break
+      case events.n2n.bridgeIO.BRIDGE:
         this.signaling.bridgeIO._bridge(id, message)
-      } else if (message && 'type' in message && message.type === events.n2n.bridgeIO.BRIDGE_FORWARD) {
+        break
+      case events.n2n.bridgeIO.BRIDGE_FORWARD:
         this.signaling.bridgeIO.forward(message)
-      } else if (message && 'type' in message && message.type === events.n2n.bridgeIO.BRIDGE_FORWARD_BACK) {
+        break
+      case events.n2n.bridgeIO.BRIDGE_FORWARD_BACK:
         this.signaling.bridgeIO.forwardBack(message)
-      } else if (message && 'type' in message && message.type === events.n2n.bridgeIO.BRIDGE_FORWARD_RESPONSE) {
+        break
+      case events.n2n.bridgeIO.BRIDGE_FORWARD_RESPONSE:
         this.signaling.bridgeIO.receiveOffer(message)
-      } else if (message && 'type' in message && message.type === events.n2n.bridgeOO.BRIDGE) {
-        this.signaling.bridgeOO._bridge(id, message)
-      } else if (message && 'type' in message && message.type === events.n2n.bridgeOO.BRIDGE_FORWARD) {
-        this.signaling.bridgeOO.forward(message)
-      } else if (message && 'type' in message && message.type === events.n2n.bridgeOO.BRIDGE_FORWARD_BACK) {
-        this.signaling.bridgeOO.forwardBack(message)
-      } else if (message && 'type' in message && message.type === events.n2n.bridgeOO.BRIDGE_FORWARD_RESPONSE) {
-        this.signaling.bridgeOO.receiveOffer(message)
-      } else if (message && 'type' in message && message.type === events.n2n.bridgeOI.BRIDGE) {
+        break
+      case events.n2n.bridgeOI.BRIDGE:
         this.signaling.bridgeOI._bridge(id, message)
-      } else if (message && 'type' in message && message.type === events.n2n.bridgeOI.BRIDGE_FORWARD) {
+        break
+      case events.n2n.bridgeOI.BRIDGE_FORWARD:
         this.signaling.bridgeOI.forward(message)
-      } else if (message && 'type' in message && message.type === events.n2n.bridgeOI.BRIDGE_FORWARD_BACK) {
+        break
+      case events.n2n.bridgeOI.BRIDGE_FORWARD_BACK:
         this.signaling.bridgeOI.forwardBack(message)
-      } else if (message && 'type' in message && message.type === events.n2n.bridgeOI.BRIDGE_FORWARD_RESPONSE) {
+        break
+      case events.n2n.bridgeOI.BRIDGE_FORWARD_RESPONSE:
         this.signaling.bridgeOI.receiveOffer(message)
-      }
-    } catch (e) {
-      console.error('An error here? hum please report...', e)
+        break
+      case events.n2n.bridgeOO.BRIDGE:
+        this.signaling.bridgeOO._bridge(id, message)
+        break
+      case events.n2n.bridgeOO.BRIDGE_FORWARD:
+        this.signaling.bridgeOO.forward(message)
+        break
+      case events.n2n.bridgeOO.BRIDGE_FORWARD_BACK:
+        this.signaling.bridgeOO.forwardBack(message)
+        break
+      case events.n2n.bridgeOO.BRIDGE_FORWARD_RESPONSE:
+        this.signaling.bridgeOO.receiveOffer(message)
+        break
+      default:
+        throw new Error('case not handled.')
     }
   }
 }
@@ -1019,7 +1316,15 @@ const debug = __webpack_require__(/*! debug */ "./node_modules/debug/src/browser
 const short = __webpack_require__(/*! short-uuid */ "./node_modules/short-uuid/index.js")
 const translator = short()
 
+/**
+ * Perform a bridge between an inview peer and an outview peer.
+ * @extends SignalingAPI
+ * @private
+ */
 class BridgeIO extends SignalingAPI {
+  /**
+   * @private
+   */
   constructor (options, n2n) {
     super(options)
     this.parent = n2n
@@ -1077,12 +1382,14 @@ class BridgeIO extends SignalingAPI {
    * @description Connect.Just connect, oh wait? (-_-)
    * @param  {Object}  options options for the connection if needed
    * @return {Promise}            Promise resolved when the connection succeeded
+   * @private
    */
   async connect (options) {}
   /**
    * Send an offer to the forwarding peer
    * @param  {Object}  offer  the offer to send
    * @return {Promise}        Promise resolved when the offer has been sent
+   * @private
    */
   async sendOfferTo (offer) {
     offer.type = events.n2n.bridgeIO.BRIDGE_FORWARD
@@ -1094,6 +1401,7 @@ class BridgeIO extends SignalingAPI {
    * Send back an accepted offer to the forwarding peer
    * @param  {Object}  offer  the offer to send
    * @return {Promise}        Promise resolved when the offer has been sent
+   * @private
    */
   async sendOfferBack (offer) {
     offer.type = events.n2n.bridgeIO.BRIDGE_FORWARD_BACK
@@ -1105,6 +1413,7 @@ class BridgeIO extends SignalingAPI {
    * Forward an offer to the peer that will accept the offer
    * @param  {Object}  offer  the offer to send
    * @return {Promise}        Promise resolved when the offer has been sent
+   * @private
    */
   async forward (offer) {
     offer.type = events.n2n.bridgeIO.BRIDGE_FORWARD_RESPONSE
@@ -1116,6 +1425,7 @@ class BridgeIO extends SignalingAPI {
    * Forward back an accepted offer to the peer that initiate the connection
    * @param  {Object}  offer  the offer to send
    * @return {Promise}        Promise resolved when the offer has been sent
+   * @private
    */
   async forwardBack (offer) {
     offer.type = events.n2n.bridgeIO.BRIDGE_FORWARD_RESPONSE
@@ -1131,6 +1441,7 @@ class BridgeIO extends SignalingAPI {
    * @param  {String}  dest   peer id (destination)
    * @param  {Number} [timeout=this.parent.options.n2n.timeout] time to wait before rejecting.
    * @return {Promise}
+   * @private
    */
   async bridge (from, dest, timeout = this.parent.options.n2n.timeout) {
     return new Promise((resolve, reject) => {
@@ -1169,6 +1480,7 @@ class BridgeIO extends SignalingAPI {
    * @param  {String} forward peer id who send the request
    * @param  {String} jobId   id of the job
    * @return {void}
+   * @private
    */
   _bridge (id, { from, dest, forward, jobId }) {
     const sendResponse = (response) => {
@@ -1254,7 +1566,15 @@ const debug = __webpack_require__(/*! debug */ "./node_modules/debug/src/browser
 const short = __webpack_require__(/*! short-uuid */ "./node_modules/short-uuid/index.js")
 const translator = short()
 
+/**
+ * Perform a bridge between an outview peer and an inview peer.
+ * @extends SignalingAPI
+ * @private
+ */
 class BridgeOI extends SignalingAPI {
+  /**
+   * @private
+   */
   constructor (options, n2n) {
     super(options)
     this.parent = n2n
@@ -1312,12 +1632,14 @@ class BridgeOI extends SignalingAPI {
    * @description Connect.Just connect, oh wait? (-_-)
    * @param  {Object}  options options for the connection if needed
    * @return {Promise}            Promise resolved when the connection succeeded
+   * @private
    */
   async connect (options) {}
   /**
    * Send an offer to the forwarding peer
    * @param  {Object}  offer  the offer to send
    * @return {Promise}        Promise resolved when the offer has been sent
+   * @private
    */
   async sendOfferTo (offer) {
     offer.type = events.n2n.bridgeOI.BRIDGE_FORWARD
@@ -1329,6 +1651,7 @@ class BridgeOI extends SignalingAPI {
    * Send back an accepted offer to the forwarding peer
    * @param  {Object}  offer  the offer to send
    * @return {Promise}        Promise resolved when the offer has been sent
+   * @private
    */
   async sendOfferBack (offer) {
     offer.type = events.n2n.bridgeOI.BRIDGE_FORWARD_BACK
@@ -1340,6 +1663,7 @@ class BridgeOI extends SignalingAPI {
    * Forward an offer to the peer that will accept the offer
    * @param  {Object}  offer  the offer to send
    * @return {Promise}        Promise resolved when the offer has been sent
+   * @private
    */
   async forward (offer) {
     offer.type = events.n2n.bridgeOI.BRIDGE_FORWARD_RESPONSE
@@ -1351,6 +1675,7 @@ class BridgeOI extends SignalingAPI {
    * Forward back an accepted offer to the peer that initiate the connection
    * @param  {Object}  offer  the offer to send
    * @return {Promise}        Promise resolved when the offer has been sent
+   * @private
    */
   async forwardBack (offer) {
     offer.type = events.n2n.bridgeOI.BRIDGE_FORWARD_RESPONSE
@@ -1366,6 +1691,7 @@ class BridgeOI extends SignalingAPI {
    * @param  {String}  dest   peer id (destination)
    * @param  {Number} [timeout=this.parent.options.n2n.timeout] time to wait before rejecting.
    * @return {Promise}
+   * @private
    */
   async bridge (from, dest, timeout = this.parent.options.n2n.timeout) {
     return new Promise((resolve, reject) => {
@@ -1396,6 +1722,9 @@ class BridgeOI extends SignalingAPI {
       }
     })
   }
+  /**
+   * @private
+   */
   _bridge (id, { from, dest, forward, jobId }) {
     const sendResponse = (response) => {
       this.parent.send(this.parent.options.n2n.protocol, forward, {
@@ -1480,7 +1809,15 @@ const debug = __webpack_require__(/*! debug */ "./node_modules/debug/src/browser
 const short = __webpack_require__(/*! short-uuid */ "./node_modules/short-uuid/index.js")
 const translator = short()
 
+/**
+ * Perform a bridge between 2 outview peers.
+ * @extends SignalingAPI
+ * @private
+ */
 class BridgeOO extends SignalingAPI {
+  /**
+   * @private
+   */
   constructor (options, n2n) {
     super(options)
     this.parent = n2n
@@ -1538,12 +1875,14 @@ class BridgeOO extends SignalingAPI {
    * @description Connect.Just connect, oh wait? (-_-)
    * @param  {Object}  options options for the connection if needed
    * @return {Promise}            Promise resolved when the connection succeeded
+   * @private
    */
   async connect (options) {}
   /**
    * Send an offer to the forwarding peer
    * @param  {Object}  offer  the offer to send
    * @return {Promise}        Promise resolved when the offer has been sent
+   * @private
    */
   async sendOfferTo (offer) {
     offer.type = events.n2n.bridgeOO.BRIDGE_FORWARD
@@ -1555,6 +1894,7 @@ class BridgeOO extends SignalingAPI {
    * Send back an accepted offer to the forwarding peer
    * @param  {Object}  offer  the offer to send
    * @return {Promise}        Promise resolved when the offer has been sent
+   * @private
    */
   async sendOfferBack (offer) {
     offer.type = events.n2n.bridgeOO.BRIDGE_FORWARD_BACK
@@ -1566,6 +1906,7 @@ class BridgeOO extends SignalingAPI {
    * Forward an offer to the peer that will accept the offer
    * @param  {Object}  offer  the offer to send
    * @return {Promise}        Promise resolved when the offer has been sent
+   * @private
    */
   async forward (offer) {
     offer.type = events.n2n.bridgeOO.BRIDGE_FORWARD_RESPONSE
@@ -1577,6 +1918,7 @@ class BridgeOO extends SignalingAPI {
    * Forward back an accepted offer to the peer that initiate the connection
    * @param  {Object}  offer  the offer to send
    * @return {Promise}        Promise resolved when the offer has been sent
+   * @private
    */
   async forwardBack (offer) {
     offer.type = events.n2n.bridgeOO.BRIDGE_FORWARD_RESPONSE
@@ -1591,6 +1933,7 @@ class BridgeOO extends SignalingAPI {
    * @param  {String}  dest   peer id (destination)
    * @param  {Number} [timeout=this.parent.options.n2n.timeout] time to wait before rejecting.
    * @return {Promise}
+   * @private
    */
   async bridge (from, dest, timeout = this.parent.options.n2n.timeout) {
     return new Promise((resolve, reject) => {
@@ -1627,6 +1970,9 @@ class BridgeOO extends SignalingAPI {
       }
     })
   }
+  /**
+   * @private
+   */
   _bridge (id, { from, dest, forward, jobId }) {
     const sendResponse = (response, reason = 'none') => {
       this.parent.send(this.parent.options.n2n.protocol, forward, {
@@ -1717,7 +2063,15 @@ const errors = __webpack_require__(/*! ../errors */ "./lib/errors/index.js")
 const short = __webpack_require__(/*! short-uuid */ "./node_modules/short-uuid/index.js")
 const translator = short()
 
+/**
+ * Perform a direct connection  between us and a neighbour.
+ * @extends SignalingAPI
+ * @private
+ */
 class DirectSignaling extends SignalingAPI {
+  /**
+   * @private
+   */
   constructor (options, n2n) {
     super(options)
     this.parent = n2n
@@ -1776,12 +2130,14 @@ class DirectSignaling extends SignalingAPI {
    * @description Connect.Just connect, oh wait? (-_-)
    * @param  {Object}  options options for the connection if needed
    * @return {Promise}            Promise resolved when the connection succeeded
+   * @private
    */
   async connect (options) {}
   /**
    * Send an offer to the forwarding peer
    * @param  {Object}  offer  the offer to send
    * @return {Promise}        Promise resolved when the offer has been sent
+   * @private
    */
   async sendOfferTo (offer) {
     offer.type = events.n2n.DIRECT_TO
@@ -1795,6 +2151,7 @@ class DirectSignaling extends SignalingAPI {
    * Send back an accepted offer to the forwarding peer
    * @param  {Object}  offer  the offer to send
    * @return {Promise}        Promise resolved when the offer has been sent
+   * @private
    */
   async sendOfferBack (offer) {
     offer.type = events.n2n.DIRECT_BACK
@@ -1807,6 +2164,7 @@ class DirectSignaling extends SignalingAPI {
    * Send back an accepted offer to the forwarding peer (for renegociate )
    * @param  {Object}  offer  the offer to send
    * @return {Promise}        Promise resolved when the offer has been sent
+   * @private
    */
   async sendOfferBackRenegociate (offer) {
     offer.type = events.n2n.DIRECT_BACK
@@ -1823,6 +2181,7 @@ class DirectSignaling extends SignalingAPI {
    * Good to luck to find a way to solve your problem. (set a bigger timeout (-_-))
    * @param  {String}  peerId id of the peer that will establish the connection
    * @return {Promise} Resolve when the connection is successfully established. Reject otherwise, error or timeout, or peer not found.
+   * @private
    */
   async connectToUs (peerId, timeout = this.parent.options.n2n.timeout) {
     if (!this.parent.livingOutview.has(peerId)) {
@@ -1860,6 +2219,9 @@ class DirectSignaling extends SignalingAPI {
       })
     }
   }
+  /**
+   * @private
+   */
   async _connectToUs ({ id, jobId }) {
     this._debug('[%s][%s][_connectToUs] receive a connectToUs order from %s...', this.parent.id, jobId, id)
     const peerId = id
@@ -1980,7 +2342,15 @@ module.exports = {
 const SignalingAPI = __webpack_require__(/*! ./signaling */ "./lib/signaling/signaling.js")
 const events = __webpack_require__(/*! ../events */ "./lib/events.js")
 
+/**
+ * Perform an offline connection by exchanging offer directly using objects.
+ * @extends SignalingAPI
+ * @private
+ */
 class OfflineSignaling extends SignalingAPI {
+  /**
+   * @private
+   */
   constructor (options, n2n) {
     super(options)
     this._debug = (__webpack_require__(/*! debug */ "./node_modules/debug/src/browser.js"))('n2n:offline')
@@ -2032,10 +2402,20 @@ class OfflineSignaling extends SignalingAPI {
       }
     })
   }
+  /**
+   * Just connect.
+   * @return {Promise}
+   * @private
+   */
   async connect () {
     this.emit('connect')
   }
 
+  /**
+   * @param  {Object} offer Object containing offers
+   * @return {void}
+   * @private
+   */
   sendOffer (offer) {
     this.emit(events.signaling.EMIT_OFFER, offer)
   }
@@ -2059,7 +2439,15 @@ const io = __webpack_require__(/*! socket.io-client */ "./node_modules/socket.io
 const short = __webpack_require__(/*! short-uuid */ "./node_modules/short-uuid/index.js")
 const translator = short()
 
+/**
+ * Perform an online connection through a signaling server. Server is available in the server folder.
+ * @extends SignalingAPI
+ * @private
+ */
 class OnlineSignaling extends SignalingAPI {
+  /**
+   * @private
+   */
   constructor (options, n2n) {
     super(options)
     this.parent = n2n
@@ -2113,6 +2501,7 @@ class OnlineSignaling extends SignalingAPI {
    * @description Connect the signaling service to a Socket.io signaling server (see the server in ./server)
    * @param  {Object}  options options for the connection if needed
    * @return {Promise}            Promise resolved when the connection succeeded
+   * @private
    */
   connect (room = 'default', options = this.options) {
     if (this.socket) return Promise.resolve()
@@ -2157,6 +2546,12 @@ class OnlineSignaling extends SignalingAPI {
     })
   }
 
+  /**
+   * Initialize the Socket.io socket.
+   * @param  {Socket.io} socket
+   * @return {void}
+   * @private
+   */
   _initializeSocket (socket) {
     this.socket = socket
     this.on(events.signaling.EMIT_OFFER, (offer) => {
@@ -2190,6 +2585,7 @@ class OnlineSignaling extends SignalingAPI {
   /**
    * Get a new peer from the signaling service, can be undefined or a string representing the peer id to connect with
    * @return {Promise}        Promise resolved with the peerId or undefined as result or reject with an error
+   * @private
    */
   getNewPeer () {
     return new Promise((resolve, reject) => {
@@ -2205,6 +2601,7 @@ class OnlineSignaling extends SignalingAPI {
    * Send an offer to the signaling service
    * @param  {Object}  offer  the offer to send to the signaling server
    * @return {Promise}        Promise resolved when the offer has been sent
+   * @private
    */
   async sendOffer (offer) {
     this.socket.emit('offer', offer)
@@ -2238,33 +2635,44 @@ const errors = __webpack_require__(/*! ../errors */ "./lib/errors/index.js")
 const EventEmitter = __webpack_require__(/*! events */ "./node_modules/events/events.js")
 const events = __webpack_require__(/*! ../events */ "./lib/events.js")
 
+/**
+ * Abstract signaling class. If you want to implement your own signaling service. You can start with this class.
+ * @extends EventEmitter
+ * @private
+ */
 class Signaling extends EventEmitter {
+  /**
+   * @private
+   */
   constructor (options = {}) {
     super()
     this.options = options
   }
 
   /**
-   * @description [**To Impelment**] Connect the signaling service
+   * @description (**Abstract**) Connect the signaling service
    * @param  {Object}  options options for the connection if needed
    * @return {Promise}            Promise resolved when the connection succeeded
+   * @private
    */
   async connect (options) {
     return Promise.reject(errors.nyi())
   }
 
   /**
-   * Get a new peer from the signaling service, can be undefined or a string representing the peer id to connect with
+   * (**Abstract**) Get a new peer from the signaling service, can be undefined or a string representing the peer id to connect with
    * @return {Promise}        Promise resolved with the peerId or undefined as result or reject with an error
+   * @private
    */
   async getNewPeer () {
     return Promise.reject(errors.nyi())
   }
 
   /**
-   * Send an offer to the signaling service
+   * (**Abstract**) Send an offer to the signaling service
    * @param  {Object}  offer  the offer to send to the signaling server
    * @return {Promise}        Promise resolved when the offer has been sent
+   * @private
    */
   async sendOffer (offer) {
     return Promise.reject(errors.nyi())
@@ -2274,6 +2682,7 @@ class Signaling extends EventEmitter {
    * Method called when an offer has been received always with the format {initiator, destination, offer}
    * @param  {Object}  offer the offer received
    * @return {void}
+   * @private
    */
   receiveOffer (offer) {
     this.emit(events.signaling.RECEIVE_OFFER, offer)
@@ -2316,8 +2725,12 @@ const SimplePeer = __webpack_require__(/*! simple-peer */ "./node_modules/simple
  * @class
  * @classdesc Simple-peer wrapper implementing the Socket API
  * @extends Socket
+ * @private
  */
 class SimplePeerWrapper extends Socket {
+  /**
+   * @private
+   */
   constructor (options) {
     options = lmerge({
       moc: false,
@@ -2330,13 +2743,25 @@ class SimplePeerWrapper extends Socket {
     }, options)
     super(options)
   }
-
+  /**
+   * Callback called when you receive an offer from a signaling service.
+   * This callback has to be implemented by you.
+   * @param  {Object} offer Offer received.
+   * @return {void}
+   * @private
+   */
   _receiveOffer (offer) {
     this.statistics.offerReceived++
     this._debug('[socket:%s] the socket just received an offer (status=%s)', this.socketId, this.status, this.statistics, this.options.initiator, offer)
     this._create()
     this.__socket.signal(offer)
   }
+  /**
+   * Create the socket if not created,
+   * @param  {Object} [options=this.options] Options object
+   * @return {void}
+   * @private
+   */
   _create (options = this.options) {
     options.initiator = false
     if (!this.__socket) {
@@ -2367,7 +2792,13 @@ class SimplePeerWrapper extends Socket {
       })
     }
   }
-
+  /**
+   * Create the socket, begin the signaling mechanism, and wait for connection.
+   * Called by the abstract socket upon connection.
+   * @param  {Object} [options=this.options.socket] Options Object
+   * @return {Promise}
+   * @private
+   */
   _connect (options = this.options.socket) {
     options.initiator = true
     this._debug('Options for the new socket: ', options)
@@ -2400,6 +2831,13 @@ class SimplePeerWrapper extends Socket {
     })
   }
 
+  /**
+   * Send a message to the other socket.
+   * Called by the abstract socket upon message to send.
+   * @param  {Object}  data Data to send
+   * @return {Promise}
+   * @private
+   */
   async _send (data) {
     this._create()
     try {
@@ -2408,7 +2846,12 @@ class SimplePeerWrapper extends Socket {
       throw e
     }
   }
-
+  /**
+   * Disconenct the socket and return a promise.
+   * Called by the abstract socket upon disconnection
+   * @return {Promise} Resolved when disconnected.
+   * @private
+   */
   async _disconnect () {
     return new Promise((resolve, reject) => {
       this.__socket.once('close', () => {
@@ -2444,18 +2887,20 @@ const translator = short()
  * @classdesc This Abstract class represent a socket which can be implemented with any socket compatible with this API.
  * For example you can implement this class with a webrtc socket such as simple-peer
  * @type {class}
+ * @private
  */
 class Socket extends EventEmitter {
   /**
    * @description Constructor of the Socket class, the connect method just initialize a socket and wait for an accepted offer
    * @param {Object} options   any options needed
+   * @private
    */
   constructor (options = {}) {
     super()
     this.socketId = translator.new()
     this._debug = (__webpack_require__(/*! debug */ "./node_modules/debug/src/browser.js"))('n2n:socket')
     this._debugMessage = (__webpack_require__(/*! debug */ "./node_modules/debug/src/browser.js"))('n2n:message')
-    this.options = lmerge({ chunks: 16000 }, options)
+    this.options = lmerge({ chunks: 16000, timeout: 5000 }, options)
     this.status = 'disconnected' // connected or disconnected
     this.on(events.socket.RECEIVE_OFFER, this._receiveOffer)
     this.buffer = []
@@ -2470,6 +2915,7 @@ class Socket extends EventEmitter {
   /**
    * Review the buffer of data sent
    * @return {void}
+   * @private
    */
   reviewBuffer () {
     let data
@@ -2481,6 +2927,7 @@ class Socket extends EventEmitter {
   /**
    * Signal to the supervisor of the socket that this socket is conencted and review the internal buffer
    * @return {void}
+   * @private
    */
   signalConnect () {
     this.status = 'connected'
@@ -2491,6 +2938,7 @@ class Socket extends EventEmitter {
   /**
    * Signal to the supervisor of the socket that this socket is disconnected
    * @return {void}
+   * @private
    */
   signalDisconnect () {
     this.status = 'disconnected'
@@ -2501,6 +2949,7 @@ class Socket extends EventEmitter {
    * @description To Implement: you will receive all offers here, do what you want with them, Usefull for connection if you are using simple-peer or webrtc
    * @param  {Object} offer offer received from someone who want to connect to us
    * @return {void}
+   * @private
    */
   _receiveOffer (offer) {
     throw errors.nyi()
@@ -2508,8 +2957,9 @@ class Socket extends EventEmitter {
 
   /**
    * Send an offer to the supervisor of the socket for sending the offer (perhaps used by a signaling service)
-   * @param  {Object} offer [description]
-   * @return {void}       [description]
+   * @param  {Object} offer
+   * @return {void}
+   * @private
    */
   emitOffer (offer) {
     this.statistics.offerSent++
@@ -2528,6 +2978,7 @@ class Socket extends EventEmitter {
    * You have to implement this method and return a promise that resolve when the connection is completed.
    * @param  {Object} options options passed to the function
    * @return {Promise}         Promise resolved when the socket is connected
+   * @private
    */
   _connect (options) {
     return Promise.reject(errors.nyi())
@@ -2540,6 +2991,7 @@ class Socket extends EventEmitter {
    * @param  {Object} data    data to send
    * @param  {Object} options options
    * @return {Promise}         Promise resolved when the message is sent
+   * @private
    */
   _send (data, options) {
     return Promise.reject(errors.nyi())
@@ -2550,6 +3002,7 @@ class Socket extends EventEmitter {
    * Default bbehavior: emit data on the event bus when received with the event 'data'
    * @param  {Object} data data received
    * @return {void}
+   * @private
    */
   _receiveData (data) {
     if (this.status === 'connecting') {
@@ -2559,6 +3012,13 @@ class Socket extends EventEmitter {
     this.emit('data', data)
   }
 
+  /**
+   * Call this method upon errors
+   * Emit on the supervizor an 'error' event with args as parameter
+   * @param  {...*} args atguments
+   * @return {void}
+   * @private
+   */
   _manageErrors (...args) {
     this._errored = true
     this._errors.push(...args)
@@ -2571,6 +3031,7 @@ class Socket extends EventEmitter {
    * Destroy/disconnect the socket
    * You have to implement this method and return a promise that resolve when the socket is destroyed
    * @return {Promise} Promise resolved when the socket is destroyed/disconnected
+   * @private
    */
   _disconnect () {
     return Promise.reject(errors.nyi())
@@ -2580,6 +3041,7 @@ class Socket extends EventEmitter {
   * @description Connect the socket to a peer using the signaling service provided by the supervisor of the socket.
   * @param  {Object} options options passed to the function
   * @return {Promise}         Promise resolved when the socket is connected
+  * @private
    */
   async connect (options = this.options) {
     this.status = 'connecting'
@@ -2594,6 +3056,7 @@ class Socket extends EventEmitter {
    * @param  {Object} data    data to send
    * @param  {Object} options options
    * @return {Promise}         Promise resolved when the message is sent
+   * @private
    */
   async send (data, options) {
     const size = sizeof(data)
@@ -2614,13 +3077,33 @@ class Socket extends EventEmitter {
   /**
    * @description Destroy/disconnect the socket
    * @return {Promise} Promise resolved when the socket is destroyed/disconnected
+   * @private
    */
-  async disconnect (options) {
+  async disconnect (options = this.options) {
     this.status = 'disconnected'
-    return this._disconnect(options).then((res) => {
-      this.signalDisconnect()
-      return res
-    }).catch(e => e)
+    return new Promise((resolve, reject) => {
+      const tout = setTimeout(() => {
+        if (this.status === 'disconnected') {
+          resolve()
+        } else {
+          reject(new Error(''))
+        }
+      }, options.timeout)
+      setTimeout(() => {
+        if (this.status === 'disconnected') {
+          clearTimeout(tout)
+          resolve()
+        }
+      }, 0)
+      this._disconnect(options).then((res) => {
+        clearTimeout(tout)
+        this.signalDisconnect()
+        resolve(res)
+      }).catch(e => {
+        clearTimeout(tout)
+        reject(e)
+      })
+    })
   }
 }
 
@@ -2650,7 +3133,14 @@ const DEFAULT_OPTIONS = () => {
   }
 }
 
+/**
+ * Simple-Peer Moc Manager
+ * @private
+ */
 class Manager {
+  /**
+   * @private
+   */
   constructor () {
     this._statistics = {
       message: 0
@@ -2661,23 +3151,24 @@ class Manager {
     }
     debugManager('manager initialized')
   }
+  // @private
   get stats () {
     return this._statistics
   }
-
+  // @private
   set (peerId, peer) {
     if (this.manager.has(peerId)) {
       throw new Error('this peer already exsists: ' + peerId)
     }
     this.manager.set(peerId, peer)
   }
-
+  // @private
   connect (from, to) {
     debugManager('peer connected from/to: ', from, to)
     this.manager.get(to)._connectWith(from)
     this.manager.get(from)._connectWith(to)
   }
-
+  // @private
   destroy (from, to) {
     debugManager('peer disconnected from/to: ', from, to)
     if (this.manager.get(from)) {
@@ -2687,11 +3178,11 @@ class Manager {
       this.manager.get(to)._close()
     }
   }
-
+  // @private
   send (from, to, msg, retry = 0) {
     this._send(from, to, msg, retry)
   }
-
+  // @private
   _send (from, to, msg, retry = 0) {
     try {
       if (!this.manager.has(from) || !this.manager.has(to)) throw new Error('need a (from) and (to) peer.')
@@ -2704,7 +3195,14 @@ class Manager {
 }
 const manager = new Manager()
 
+/**
+ * Simple Peer Moc,
+ * @private
+ */
 module.exports = class SimplePeerAbstract extends EventEmitter {
+  /**
+   * @private
+   */
   constructor (options) {
     super()
     this._manager = manager
@@ -2728,11 +3226,10 @@ module.exports = class SimplePeerAbstract extends EventEmitter {
       this._manager.manager.delete(this.id)
     })
   }
-
+  // @private
   static get manager () {
     return manager
   }
-
   send (data) {
     if (!this.connectedWith) {
       this.messageBuffer.push(data)
@@ -2747,11 +3244,9 @@ module.exports = class SimplePeerAbstract extends EventEmitter {
       }
     }
   }
-
   destroy () {
     this._manager.destroy(this.id, this.connectedWith)
   }
-
   signal (data) {
     if (data.type === 'accept') {
       debugManager('offer-accept received:', data)
@@ -2762,26 +3257,26 @@ module.exports = class SimplePeerAbstract extends EventEmitter {
       this.emit('signal', this._createAccept(data))
     }
   }
-
+  // @private
   _error (error) {
     debugManager(error)
     this.emit('internal_close')
     this.emit('error', error)
   }
-
+  // @private
   _close () {
     this.emit('internal_close')
     debugManager('[%s] is closed.', this.id)
     this.emit('close')
   }
-
+  // @private
   _init () {
     this._isNegotiating = true
     const offer = this._createOffer()
     offer.count = 1
     this.emit('signal', offer)
   }
-
+  // @private
   _createOffer () {
     const newOffer = {
       offerId: translator.new(),
@@ -2792,6 +3287,7 @@ module.exports = class SimplePeerAbstract extends EventEmitter {
     }
     return newOffer
   }
+  // @private
   _createAccept (offer) {
     const acceptedOffer = this._createOffer()
     acceptedOffer.type = 'accept'
@@ -2801,24 +3297,24 @@ module.exports = class SimplePeerAbstract extends EventEmitter {
     acceptedOffer.count = offer.count
     return acceptedOffer
   }
-
+  // @private
   _reviewMessageBuffer () {
     debugManager('Review the buffer: ', this.messageBuffer.length)
     while (this.connectedWith && this.messageBuffer.length !== 0) {
       this._send(this.messageBuffer.pop())
     }
   }
-
+  // @private
   _send (to = this.connectedWith, data) {
     if (!to) throw new Error('It must have a destination.')
     this._manager.send(this.id, to, data)
   }
-
+  // @private
   _connect (offer) {
     if (!offer.offer.acceptor) throw new Error('It must have an acceptor')
     this._manager.connect(offer.offer.initiator, offer.offer.acceptor)
   }
-
+  // @private
   _connectWith (connectedWith) {
     this.connected = true
     this._isNegotiating = false
@@ -2844,6 +3340,7 @@ class View extends Map {
    * Rule: occ - lock > 0 AND socket is connected
    * @param  {id} id identifier of the peer
    * @return {Boolean}    true or false if the peer is available or not
+   * @private
    */
   available (id) {
     if (super.has(id)) {

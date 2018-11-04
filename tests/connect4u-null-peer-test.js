@@ -32,6 +32,6 @@ describe('[N2N] Offline connection', function () {
     await b.connect4u(null, c.id)
     assert.strictEqual(b.livingOutview.get(c.id).occurences, 2)
     assert.strictEqual(c.livingOutview.has(b.id), false)
-    assert.strictEqual(c.livingInview.get(b.id).occurences, 1)
+    assert.strictEqual(c.livingInview.get(b.id).occurences, 2)
   })
 })
