@@ -176,6 +176,18 @@ module.exports = {
     OCC_DEC: 'o:d' // when we have to decrease the occurence on the inview
   },
   n2n: {
+    connection: {
+      out: 'out',
+      in: 'in'
+    },
+    disconnection: {
+      out: 'close_out',
+      in: 'close_in'
+    },
+    crash: {
+      out: 'crash_out',
+      in: 'crash_in'
+    },
     DISCONNECT: 'disc',
     INC_IN: 'inc:in',
     DEC_IN: 'dec:in',
@@ -837,6 +849,7 @@ class N2N extends EventEmitter {
   _increaseInview (id) {
     if (this.livingInview.has(id)) {
       this.livingInview.get(id).occurences++
+      this._signalConnect(id, false)
     }
   }
 
@@ -997,16 +1010,23 @@ class N2N extends EventEmitter {
       // check if it is the same socketId
       if (p.socket.socketId === socketId) {
         this._debug('[%s] close outview: ', this.id, peerId, outview, p)
-        for (let i = 0; i < (p.occurences); ++i) {
-          this._signalDisconnect(peerId, outview, true)
+        if (p.occurences > 0) {
+          this._signalCrash(peerId, p.occurences, outview)
+          for (let i = 0; i < (p.occurences); ++i) {
+            this._signalDisconnect(peerId, outview, true)
+          }
         }
+
         this._deleteLiving(peerId, outview)
       } // else, nothing to do
     } else if (!outview && this.livingInview.has(peerId)) {
       const p = this.livingInview.get(peerId)
       if (p.socket.socketId === socketId) {
-        for (let i = 0; i < (p.occurences); ++i) {
-          this._signalDisconnect(peerId, outview, true)
+        if (p.occurences > 0) {
+          this._signalCrash(peerId, p.occurences, outview)
+          for (let i = 0; i < (p.occurences); ++i) {
+            this._signalDisconnect(peerId, outview, true)
+          }
         }
         this._debug('[%s] close inview: ', this.id, peerId, outview)
         this._deleteLiving(peerId, outview)
@@ -1078,9 +1098,9 @@ class N2N extends EventEmitter {
    */
   _signalConnect (id, outview = false) {
     if (outview) {
-      this.emit('out', id, true)
+      this.emit(events.n2n.connection.out, id, true)
     } else {
-      this.emit('in', id, false)
+      this.emit(events.n2n.connection.in, id, false)
     }
   }
   /**
@@ -1093,9 +1113,26 @@ class N2N extends EventEmitter {
    */
   _signalDisconnect (id, outview, fail = false) {
     if (outview) {
-      this.emit('close_out', id, fail)
+      this.emit(events.n2n.disconnection.out, id, fail)
     } else {
-      this.emit('close_in', id, fail)
+      this.emit(events.n2n.disconnection.in, id, fail)
+    }
+  }
+
+  /**
+   * Signal on the event 'crash' that a peer is not anymore connected, because he surely leaves the network.
+   * It emits the identifier of the peer with the number of arcs disconnected and if it is an inview or outview arc
+   * @param  {String}  id              identifier of the peer who leaves
+   * @param  {Number}  occurences      Number of occurences in our view
+   * @param  {Boolean} [outview=false] If the connection is an inview or outview peer
+   * @return {void}
+   * @private
+   */
+  _signalCrash (id, occurences, outview = false) {
+    if (outview) {
+      this.emit(events.n2n.crash.out, id, occurences, outview)
+    } else {
+      this.emit(events.n2n.crash.in, id, occurences, outview)
     }
   }
 
