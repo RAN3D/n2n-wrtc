@@ -16,7 +16,9 @@ const config = lmerge(webpackconfig, {
         parse: {},
         compress: {},
         mangle: true, // Note `mangle.properties` is `false` by default.
-        output: null,
+        output: {
+          comments: false
+        },
         toplevel: false,
         nameCache: null,
         ie8: false,
