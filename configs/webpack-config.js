@@ -1,7 +1,6 @@
-const webpack = require('webpack')
 module.exports = {
   mode: 'development',
-  entry: './lib/index.js',
+  entry: './lib/main.js',
   output: {
     'path': require('path').resolve(process.cwd(), './bin'),
     'filename': 'n2n-wrtc.bundle.js',
@@ -13,13 +12,10 @@ module.exports = {
     rules: [
       {
         test: /\.js$/,
-        exclude: (name) => {
-          return true
-        },
         use: {
           loader: 'babel-loader',
           options: {
-            presets: [ 'env' ]
+            presets: ['@babel/preset-env']
           }
         }
       }
