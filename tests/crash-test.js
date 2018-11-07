@@ -1,5 +1,6 @@
 const N2N = require('../lib').N2N
 const assert = require('assert')
+const utils = require('../lib/utils')
 
 describe('[N2N] Crash test', function () {
   this.timeout(10 * 1000)
@@ -31,6 +32,8 @@ describe('[N2N] Crash test', function () {
     await a.connect(b)
     await a.connect(b)
     await a.connect(b)
+    // because the moc is enabled, and the code is synchronous we need to wait for messages
+    await utils.timeout(500)
     return new Promise((resolve, reject) => {
       let o = 0
       const done = (occ) => {

@@ -1,5 +1,6 @@
 const N2N = require('../lib').N2N
 const assert = require('assert')
+const utils = require('../lib/utils')
 const socket = {
   moc: true,
   tricle: true
@@ -142,6 +143,7 @@ describe('N2N connection', function () {
     assert.strictEqual(b.livingOutview.get(a.id).occurences, 1)
     assert.strictEqual(b.livingOutview.get(a.id).lock, 0)
     await a.disconnect()
+    await utils.timeout(500)
     assert.strictEqual(a.getNeighboursIds().length, 0)
     assert.strictEqual(b.getNeighboursIds().length, 1)
     assert.strictEqual(a.livingInview.size, 1)
@@ -187,6 +189,7 @@ describe('N2N connection', function () {
     assert.strictEqual(b.livingOutview.get(a.id).occurences, 1)
     assert.strictEqual(b.livingOutview.get(a.id).lock, 0)
     await a.disconnect()
+    await utils.timeout(500)
     assert.strictEqual(a.getNeighboursIds().length, 0)
     assert.strictEqual(b.getNeighboursIds().length, 1)
     assert.strictEqual(a.livingInview.size, 1)
@@ -194,6 +197,7 @@ describe('N2N connection', function () {
     assert.strictEqual(b.livingInview.size, 0)
     assert.strictEqual(b.livingOutview.size, 1)
     await b.disconnect()
+    await utils.timeout(500)
     assert.strictEqual(a.getNeighboursIds().length, 0)
     assert.strictEqual(b.getNeighboursIds().length, 0)
     assert.strictEqual(a.livingInview.size, 0)

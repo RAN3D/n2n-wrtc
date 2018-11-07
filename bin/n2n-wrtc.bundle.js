@@ -785,25 +785,26 @@ class N2N extends EventEmitter {
             this._signalDisconnect(peerId, true, false)
             return this.send(this.options.n2n.protocol, peerId, {
               type: events.n2n.DISCONNECT
+            }).catch(e => {
+              console.warn('[%s] cannot send the message to %s', this.id, peerId, e)
             }).then(() => {
               return p.socket.disconnect(this.options.socket)
-            }).catch(e => {
-              return p.socket.disconnect()
             })
           } else {
             this._signalDisconnect(peerId, true, false) // signal disconnect
             return Promise.resolve()
           }
         }).catch(e => {
+          console.error(e)
           console.warn('[%s] cannot send the message to %s', this.id, peerId)
           if (this.livingOutview.get(peerId).occurences === 0) {
             this._signalDisconnect(peerId, true, false)
             return this.send(this.options.n2n.protocol, peerId, {
               type: events.n2n.DISCONNECT
-            }).then(() => {
-              return p.socket.disconnect()
             }).catch(e => {
-              return p.socket.disconnect()
+              console.warn('[%s] cannot send the message to %s', this.id, peerId, e)
+            }).then(() => {
+              return p.socket.disconnect(this.options.socket)
             })
           } else {
             this._signalDisconnect(peerId, true, false) // signal disconnect
@@ -2284,10 +2285,7 @@ class DirectSignaling extends SignalingAPI {
 
         const socket = this.parent.createNewSocket(this.parent.options.socket, peerId, true)
         socket.on('error', (error) => {
-          this.parent._manageError(error, peerId, true, (e) => {
-            this._debug('[%s][%s][_connectToUs] receive an error during the connection %s...', this.parent.id, jobId, id, e)
-            reject(e)
-          }, 'direct')
+          this.parent._manageError(error, peerId, true, reject, 'direct')
         })
         socket.on(events.socket.EMIT_OFFER, (offer) => {
           const off = {
@@ -3209,7 +3207,8 @@ class Manager {
     }
     this.manager = new Map()
     this._options = {
-      latency: (send) => { setTimeout(send, 0) }
+      latency: 0,
+      connections: 50
     }
     debugManager('manager initialized')
   }
@@ -3228,17 +3227,22 @@ class Manager {
   connect (from, to) {
     debugManager('peer connected from/to: ', from, to)
     this.manager.get(to)._connectWith(from)
-    this.manager.get(from)._connectWith(to)
+    setTimeout(() => {
+      this.manager.get(from)._connectWith(to)
+    }, this._options.connections)
   }
   // @private
   destroy (from, to) {
     debugManager('peer disconnected from/to: ', from, to)
-    if (this.manager.get(from)) {
+    if (this.manager.has(from)) {
       this.manager.get(from)._close()
     }
-    if (this.manager.get(to)) {
-      this.manager.get(to)._close()
-    }
+    // disconnect the overside of the socket after one second
+    setTimeout(() => {
+      if (this.manager.has(to)) {
+        this.manager.get(to)._close()
+      }
+    }, this._options.connections)
   }
   // @private
   send (from, to, msg, retry = 0) {
@@ -3247,9 +3251,12 @@ class Manager {
   // @private
   _send (from, to, msg, retry = 0) {
     try {
-      if (!this.manager.has(from) || !this.manager.has(to)) throw new Error('need a (from) and (to) peer.')
-      this.manager.get(to).emit('data', msg)
-      this._statistics.message++
+      if (!this.manager.has(from) || !this.manager.has(to)) {
+        throw new Error('need a (from) and (to) peer.')
+      } else {
+        this._statistics.message++
+        this.manager.get(to)._receive(msg)
+      }
     } catch (e) {
       throw new Error('cannot send the message. perhaps your destination is not reachable.', e)
     }
@@ -3284,13 +3291,15 @@ module.exports = class SimplePeerAbstract extends EventEmitter {
       })
     }
     this._manager.set(this.id, this)
-    this.on('internal_close', () => {
-      this._manager.manager.delete(this.id)
-    })
   }
   // @private
   static get manager () {
     return manager
+  }
+  _receive (data) {
+    setTimeout(() => {
+      this.emit('data', data)
+    }, this._manager._options.latency)
   }
   send (data) {
     if (!this.connectedWith) {
@@ -3327,7 +3336,7 @@ module.exports = class SimplePeerAbstract extends EventEmitter {
   }
   // @private
   _close () {
-    this.emit('internal_close')
+    this._manager.manager.delete(this.id)
     debugManager('[%s] is closed.', this.id)
     this.emit('close')
   }

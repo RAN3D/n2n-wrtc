@@ -1,5 +1,6 @@
 const N2N = require('../lib').N2N
 const assert = require('assert')
+const utils = require('../lib/utils')
 
 describe('[N2N] Offline connection', function () {
   this.timeout(2 * 60 * 1000)
@@ -30,6 +31,7 @@ describe('[N2N] Offline connection', function () {
     assert.strictEqual(c.livingOutview.has(b.id), false)
     assert.strictEqual(c.livingInview.get(b.id).occurences, 1)
     await b.connect4u(null, c.id)
+    await utils.timeout(500)
     assert.strictEqual(b.livingOutview.get(c.id).occurences, 2)
     assert.strictEqual(c.livingOutview.has(b.id), false)
     assert.strictEqual(c.livingInview.get(b.id).occurences, 2)
