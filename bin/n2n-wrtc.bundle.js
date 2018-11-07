@@ -2229,7 +2229,6 @@ class DirectSignaling extends SignalingAPI {
         const jobId = translator.new()
         const tout = setTimeout(() => {
           const e = new Error(`timed out (${timeout} (ms)) jobId= ${jobId}. Cannot establish a connection between us and ${peerId}`)
-          console.error(e)
           reject(e)
         }, timeout) // always put two second to handle a maximum of 2s of delay minimum...
         this.parent.events.once(jobId, (msg) => {
@@ -2251,7 +2250,6 @@ class DirectSignaling extends SignalingAPI {
           this._debug('[%s][%s] connectToUs message sent to %s to connect to US..', this.parent.id, jobId, peerId)
         }).catch(e => {
           clearTimeout(tout)
-          console.error(e)
           reject(e)
         })
       })
@@ -3208,7 +3206,8 @@ class Manager {
     this.manager = new Map()
     this._options = {
       latency: 0,
-      connections: 50
+      connections: 100,
+      disconnections: 200
     }
     debugManager('manager initialized')
   }
@@ -3237,12 +3236,12 @@ class Manager {
     if (this.manager.has(from)) {
       this.manager.get(from)._close()
     }
-    // disconnect the overside of the socket after one second
+    // notify the overside of the socket after 5 seconds
     setTimeout(() => {
       if (this.manager.has(to)) {
         this.manager.get(to)._close()
       }
-    }, this._options.connections)
+    }, this._options.disconnections)
   }
   // @private
   send (from, to, msg, retry = 0) {
