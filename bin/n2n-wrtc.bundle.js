@@ -256,7 +256,7 @@ class N2N extends EventEmitter {
       socket: {
         objectMode: false
       },
-      signaling: lmerge({ room: 'default', id }, __webpack_require__(/*! ./signaling/server/config.json */ "./lib/signaling/server/config.json"))
+      signaling: lmerge({ room: 'default', parent: this }, __webpack_require__(/*! ./signaling/server/config.json */ "./lib/signaling/server/config.json"))
     }, options)
     // debug log
     this._debug = (__webpack_require__(/*! debug */ "./node_modules/debug/src/browser.js"))('n2n:n2n')
@@ -2551,7 +2551,7 @@ class OnlineSignaling extends SignalingAPI {
         autoConnect: false,
         query: {
           room,
-          id: options.id
+          id: options.parent.id
         }
       })
       socket.connect()
