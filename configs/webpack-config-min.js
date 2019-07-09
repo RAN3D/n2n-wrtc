@@ -1,4 +1,4 @@
-const UglifyJSPlugin = require('uglifyjs-webpack-plugin')
+const TerserPlugin = require('terser-webpack-plugin')
 const lmerge = require('lodash.merge')
 const webpackconfig = require('./webpack-config')
 
@@ -8,24 +8,18 @@ const config = lmerge(webpackconfig, {
     'filename': 'n2n-wrtc.bundle.min.js'
   },
   optimization: {
-    minimizer: [new UglifyJSPlugin({
-      sourceMap: true,
+    minimizer: [new TerserPlugin({
       parallel: true,
-      uglifyOptions: {
-        warnings: false,
-        parse: {},
-        compress: {},
-        mangle: true, // Note `mangle.properties` is `false` by default.
-        output: {
-          comments: false
-        },
-        toplevel: false,
-        nameCache: null,
-        ie8: false,
-        keep_fnames: false
-      }
+      sourceMap: true
     })]
   }
 })
+
+config.module.rules.push({
+  test: /\.js$/,
+  use: ['source-map-loader'],
+  enforce: 'pre'
+})
+
 console.log('Production configuration: ', config)
 module.exports = config
