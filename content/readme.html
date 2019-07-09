@@ -10,16 +10,14 @@
 This allows to do the same job but the package is completely rebuilt from scratch for simplicity.</p>
 <h2 id="install">Install</h2>
 <hr />
-<pre><code>npm install --save n2n-wrtc
-</code></pre><h2 id="usage">Usage</h2>
+<pre><code>npm install --save n2n-wrtc</code></pre><h2 id="usage">Usage</h2>
 <hr />
 <p>Just add in your index.html:</p>
-<pre><code class="lang-js">&lt;script type='text/javascript' src='./node_modules/n2n-wrtc/bin/n2n-wrtc.bundle.min.js'&gt;&lt;/script&gt;
-</code></pre>
+<pre><code class="js">&lt;script type='text/javascript' src='./node_modules/n2n-wrtc/bin/n2n-wrtc.bundle.min.js'&gt;&lt;/script&gt;</code></pre>
 <p>Then the library is available through the name <strong>n2n</strong></p>
 <p>In <strong>NodeJs</strong> just do <code>const n2n = require('n2n')</code></p>
 <p>Now an example of how to using it (without the signaling server):</p>
-<pre><code class="lang-javascript">const N2N = n2n.N2N // get the N2N class
+<pre><code class="javascript">const N2N = n2n.N2N // get the N2N class
 
 const a = create('a')
 const b = create('b')
@@ -47,8 +45,7 @@ function create(id) {
       moc: true
     }
   })
-}
-</code></pre>
+}</code></pre>
 <p>Using the signaling server you can just do <code>npm run signaling</code> and put <code>signaling: {room: 'myroom', address: 'http://localhost:5555'}</code> and then call <code>a.connect()</code> and <code>b.connect()</code> to connect b to a.</p>
 <h2 id="neighborhood">Neighborhood</h2>
 <hr />
@@ -101,65 +98,65 @@ in the network. <code>:3</code> can establish a WebRTC connection to <code>:|</c
 peer-sampling protocols.</p>
 <h2 id="overview-of-available-functionalities">Overview of available functionalities <a name="features"></a></h2>
 <hr />
-<ul class="docma task-list">
-<li class="docma task-item"><input type="checkbox" disabled="" checked=""> &nbsp;Create the API (api for neighborhood, signaling services, n2n and sockets)</li>
-<li class="docma task-item"><input type="checkbox" disabled="" checked=""> &nbsp;Create WebRTC Wrapper using (<a href="https://github.com/feross/simple-peer">simple-peer</a>)</li>
-<li class="docma task-item"><input type="checkbox" disabled=""> &nbsp;Create Bluetooth Wrapper using (<a href="http://sabertooth-io.github.io/">sabertooth</a>)</li>
-<li class="docma task-item"><input type="checkbox" disabled="" checked=""> &nbsp;<strong>Offline signaling</strong> allowing to do <code>a.connect(b)</code></li>
-<li class="docma task-item"><input type="checkbox" disabled="" checked=""> &nbsp;<strong>Signaling server</strong> for online signaling<ul>
+<ul>
+<li><input checked="" disabled="" type="checkbox"> Create the API (api for neighborhood, signaling services, n2n and sockets)</li>
+<li><input checked="" disabled="" type="checkbox"> Create WebRTC Wrapper using (<a href="https://github.com/feross/simple-peer">simple-peer</a>)</li>
+<li><input disabled="" type="checkbox"> Create Bluetooth Wrapper using (<a href="http://sabertooth-io.github.io/">sabertooth</a>)</li>
+<li><input checked="" disabled="" type="checkbox"> <strong>Offline signaling</strong> allowing to do <code>a.connect(b)</code></li>
+<li><input checked="" disabled="" type="checkbox"> <strong>Signaling server</strong> for online signaling<ul>
 <li><code>npm run signaling</code> or</li>
 <li><code>require('n2n-wrtc/lib/signaling/server').server()</code></li>
 </ul>
 </li>
-<li class="docma task-item"><input type="checkbox" disabled="" checked=""> &nbsp;<strong>Online signaling</strong> allowing to do <code>a.connect()</code> using a signaling server</li>
-<li class="docma task-item"><input type="checkbox" disabled="" checked=""> &nbsp;<strong>Get a list of all neighbours (not locked)</strong>:  <ul>
+<li><input checked="" disabled="" type="checkbox"> <strong>Online signaling</strong> allowing to do <code>a.connect()</code> using a signaling server</li>
+<li><input checked="" disabled="" type="checkbox"> <strong>Get a list of all neighbours (not locked)</strong>:  <ul>
 <li><code>a.getNeighbours()</code></li>
 </ul>
 </li>
-<li class="docma task-item"><input type="checkbox" disabled="" checked=""> &nbsp;<strong>Get a list of all neighbours (even if locked)</strong> <code>a.getAllNeighbours(true)</code></li>
-<li class="docma task-item"><input type="checkbox" disabled="" checked=""> &nbsp;<strong>Get a list of all neighbours ids (locked/ not locked)</strong> (outview):<ul>
+<li><input checked="" disabled="" type="checkbox"> <strong>Get a list of all neighbours (even if locked)</strong> <code>a.getAllNeighbours(true)</code></li>
+<li><input checked="" disabled="" type="checkbox"> <strong>Get a list of all neighbours ids (locked/ not locked)</strong> (outview):<ul>
 <li><code>a.getNeighboursIds([true/false])</code></li>
 </ul>
 </li>
-<li class="docma task-item"><input type="checkbox" disabled="" checked=""> &nbsp;<strong>Get only inview ids</strong>:<ul>
+<li><input checked="" disabled="" type="checkbox"> <strong>Get only inview ids</strong>:<ul>
 <li><code>a.getNeighboursInview()</code></li>
 </ul>
 </li>
-<li class="docma task-item"><input type="checkbox" disabled="" checked=""> &nbsp;<strong>Get only outview ids (not locked)</strong>: <code>a.getNeighboursOutview()</code></li>
-<li class="docma task-item"><input type="checkbox" disabled="" checked=""> &nbsp;<strong>Send</strong> a message over Unicast and the received message will be emit on the specified event (here: 'receive'):<ul>
+<li><input checked="" disabled="" type="checkbox"> <strong>Get only outview ids (not locked)</strong>: <code>a.getNeighboursOutview()</code></li>
+<li><input checked="" disabled="" type="checkbox"> <strong>Send</strong> a message over Unicast and the received message will be emit on the specified event (here: 'receive'):<ul>
 <li><code>a.send('receive', b.id, 'meow');</code></li>
 </ul>
 </li>
-<li class="docma task-item"><input type="checkbox" disabled="" checked=""> &nbsp;<strong>Listen on incoming messages</strong>:<ul>
+<li><input checked="" disabled="" type="checkbox"> <strong>Listen on incoming messages</strong>:<ul>
 <li><code>b.on('receive', (id, message) =&gt; ...);</code></li>
 </ul>
 </li>
-<li class="docma task-item"><input type="checkbox" disabled="" checked=""> &nbsp;Create the internal signaling service:<ul>
+<li><input checked="" disabled="" type="checkbox"> Create the internal signaling service:<ul>
 <li>Allow to forward offers from an inview neighbour to an outview neighbour</li>
 <li>After connection new offers are transmitted by message (usefull for re-negociation)</li>
 </ul>
 </li>
-<li class="docma task-item"><input type="checkbox" disabled="" checked=""> &nbsp;Create from -&gt; to connections allowing to do: <code>a.connectFromUs(b.id)</code><ul>
+<li><input checked="" disabled="" type="checkbox"> Create from -&gt; to connections allowing to do: <code>a.connectFromUs(b.id)</code><ul>
 <li><strong>b.id need to be in our outview</strong></li>
 <li>It means that it increments our outview, not the inview of the neighbor</li>
 </ul>
 </li>
-<li class="docma task-item"><input type="checkbox" disabled="" checked=""> &nbsp;Create a Direct signaling service</li>
-<li class="docma task-item"><input type="checkbox" disabled="" checked=""> &nbsp;Create to -&gt; from connections <code>a.connectToUs(b.id)</code><ul>
+<li><input checked="" disabled="" type="checkbox"> Create a Direct signaling service</li>
+<li><input checked="" disabled="" type="checkbox"> Create to -&gt; from connections <code>a.connectToUs(b.id)</code><ul>
 <li><strong>b.id need to be in our outview</strong></li>
 <li>It means that it does the same thing than from -&gt; to but from the neighbor: <code>a.connectFrom(b.id)</code></li>
 <li>If the connection does not exist, create the connection using the direct signaling service</li>
 </ul>
 </li>
-<li class="docma task-item"><input type="checkbox" disabled="" checked=""> &nbsp;<code>a.connect4u(&lt;id&gt;, &lt;id&gt;)</code> choose for you what kind of method to apply for performing the connection for you.<ul>
+<li><input checked="" disabled="" type="checkbox"> <code>a.connect4u(&lt;id&gt;, &lt;id&gt;)</code> choose for you what kind of method to apply for performing the connection for you.<ul>
 <li>Be carefull, if a bridge is done, it is a bridge where from is in your inview and dest is in your outview.</li>
 <li>For more choices, see <code>bridgeOO(...)</code> and <code>bridgeOI(...)</code> methods.</li>
 </ul>
 </li>
-<li class="docma task-item"><input type="checkbox" disabled=""> &nbsp;Ice Re-negociation, when a peer is connected, new offers are transferred using the connection.</li>
-<li class="docma task-item"><input type="checkbox" disabled=""> &nbsp;Encapsulate each message sent for distinguish admin messages from application messages</li>
-<li class="docma task-item"><input type="checkbox" disabled=""> &nbsp;Minimize the encapsulation</li>
-<li class="docma task-item"><input type="checkbox" disabled=""> &nbsp;Control the size of the object sent and create a mechanism to handle bigger files (chunkification)</li>
+<li><input disabled="" type="checkbox"> Ice Re-negociation, when a peer is connected, new offers are transferred using the connection.</li>
+<li><input disabled="" type="checkbox"> Encapsulate each message sent for distinguish admin messages from application messages</li>
+<li><input disabled="" type="checkbox"> Minimize the encapsulation</li>
+<li><input disabled="" type="checkbox"> Control the size of the object sent and create a mechanism to handle bigger files (chunkification)</li>
 </ul>
 <h2 id="turn-and-stun-servers--for-tests-purposes-only-">Turn and Stun servers (for tests purposes only)</h2>
 <hr />
@@ -167,21 +164,19 @@ peer-sampling protocols.</p>
 <ul>
 <li><p>a stun server is available through <code>node-stun-server</code> <a href="https://github.com/enobufs/stun">node-stun</a></p>
 <ul>
-<li>check the node-stun.ini in tests/stun folder.<pre><code class="lang-javascript">const iceServers = {
+<li>check the node-stun.ini in tests/stun folder.<pre><code class="javascript">const iceServers = {
 url: 'stun:127.0.0.1:3478'
-}
-</code></pre>
+}</code></pre>
 </li>
 </ul>
 </li>
 <li><p>a turn server is available through a Dockerfile</p>
 <ul>
-<li>check the Dockerfile in the tests/turn folder.<pre><code class="lang-javascript">const iceServers = {
+<li>check the Dockerfile in the tests/turn folder.<pre><code class="javascript">const iceServers = {
 urls: 'turn:127.0.0.1:3478?transport=udp'
 username: 'username',
 password: 'password'
-}
-</code></pre>
+}</code></pre>
 </li>
 </ul>
 </li>
