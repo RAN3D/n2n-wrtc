@@ -867,7 +867,7 @@ class N2N extends EventEmitter {
   }
 
   /**
-   * Simulate a crash by disconnecting all sockets from inview/outview
+   * Simulate a crash by disconnecting all sockets from inview/outview including all signaling services
    * @return {void}
    * @example
    * // Offline connection
@@ -876,6 +876,7 @@ class N2N extends EventEmitter {
    * const b = new N2N({n2n: {id: 'b'}})
    * a.connect(b)
    * a.crash()
+   * b.crash()
    * // will receive events on crash_out and crash_in respectively for a and b
    */
   crash () {
@@ -885,6 +886,9 @@ class N2N extends EventEmitter {
     this.livingInview.forEach(p => {
       p.socket.disconnect()
     })
+    for (let key in this.signaling) {
+      this.signaling[key].disconnect()
+    }
   }
 
   /**
@@ -2492,8 +2496,8 @@ class OnlineSignaling extends SignalingAPI {
     super(options)
     this.parent = n2n
     this.on(events.signaling.RECEIVE_OFFER, ({ jobId, initiator, destination, type, offer }) => {
-      if (!initiator || !destination || !offer || !type) throw new Error('PLEASE REPORT, Problem with the offline signaling service. provide at least initiator, destination, type a,d the offer as properties in the object received')
-      if (!this.parent.livingInview.has(initiator) && type === 'new') {
+      if (!initiator || !destination || !offer || !type) throw new Error('PLEASE REPORT, Problem with the signaling service. provide at least initiator, destination, type and the offer as properties in the object received')
+      if (!this.parent.livingInview.has(initiator) && !this.parent.pendingInview.has(initiator) && type === 'new') {
         // we do have the socket for the moment, create it
         this.parent.createNewSocket(this.parent.options.socket, initiator, false)
         // ATTENTION: LISTENERS HAVE TO BE DECLARED ONCE!
@@ -2506,7 +2510,7 @@ class OnlineSignaling extends SignalingAPI {
           })
         })
         this.parent.pendingInview.get(initiator).socket.on(events.socket.EMIT_OFFER_RENEGOCIATE, (socketOffer) => {
-          console.log('[bridge] receive a negociate offer')
+          // console.log('[bridge] receive a negociate offer')
           const off = {
             jobId,
             initiator,
@@ -2587,6 +2591,19 @@ class OnlineSignaling extends SignalingAPI {
   }
 
   /**
+   * Disconnect the signaling service from the signaling server
+   * @return {void}
+   */
+  disconnect () {
+    if (this.socket) {
+      this.socket.close()
+      this.socket.off('connect')
+      this.socket.off('connect_failed')
+      this.socket.off('connect_error')
+    }
+  }
+
+  /**
    * Initialize the Socket.io socket.
    * @param  {Socket.io} socket
    * @return {void}
@@ -2601,24 +2618,24 @@ class OnlineSignaling extends SignalingAPI {
       this.emit(events.signaling.RECEIVE_OFFER, offer)
     })
     socket.on('error', (error) => {
-      console.error('SS error: ', error)
+      console.error('Signaling Service error: ', error)
     })
     socket.on('disconnect', (error) => {
-      console.log('SS disconnection: ', error)
+      console.log('Signaling Service disconnection: ', error)
     })
     socket.on('reconnect_error', (error) => {
       socket.close()
-      console.error('SS disconnection: ', error)
+      console.error('Signaling Service disconnection: ', error)
     })
     socket.on('reconnect_failed', (error) => {
       socket.close()
-      console.error('SS disconenction: ', error)
+      console.error('Signaling Service disconenction: ', error)
     })
     socket.on('reconnect_attempt', () => {
-      console.log('SS attempting a reconnection')
+      console.log('Signaling Service attempting a reconnection')
     })
     socket.on('reconnect', (number) => {
-      console.log('SS successfull reconnection when attempting a reconnection: ', number)
+      console.log('Signaling Service successfull reconnection when attempting a reconnection: ', number)
     })
   }
 
@@ -2687,6 +2704,14 @@ class Signaling extends EventEmitter {
   constructor (options = {}) {
     super()
     this.options = options
+  }
+
+  /**
+   * Disconnect the signaling service
+   * @return {Promise} Resolved when disconnect.
+   */
+  async disconnect () {
+    return Promise.resolve()
   }
 
   /**
